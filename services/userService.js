@@ -36,21 +36,29 @@ const userService = {
         db.query(sql, username, async (err, result) => {
             if (err) throw err;
             if (result.length < 1) {//表示该用户没有注册
+                //创建基本路由，让用户注册后就拥有页面的基本路由权限(默认为员工)
+                const routes = ["Acl","User","Role","Permission","Product","Trademark","Attr","Spu","Sku"];
                 let password = await bcrypt.hash(req.body.password, 12);
-                db.query("insert into users(username,password) values(?,?)", [username, password])
-                res.send({status: 200, message: "注册成功，请先登录"})
+                const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
+                db.query("insert into users(username,password,routes,avatar) values(?,?,?,?)", [username, password,routes.toString(),avatar])
+                res.send({code: 200, message: "注册成功，请先登录"})
             } else {
-                res.send({status: 400, message: "该用户已被注册"})
+                res.send({code: 400, message: "该用户已被注册"})
             }
         })
     },
     //用户基本信息
     getInfo: async (req, res) => {
         let payload = verifyToken(req.headers.token)
-        console.log(payload);
         const sql = "select * from users where user_id=?";
         db.query(sql, payload.user_id, async (err, result) => {
-            if (err) throw err;
+            if (err) {
+                res.send({
+                    code: 404,
+                    message: "用户查询失败"
+                })
+                return;
+            }
             const userInfo = {...result[0]}
             res.send({
                 code: 200,
@@ -59,7 +67,7 @@ const userService = {
                     username: userInfo.username,
                     role: userInfo.role,
                     avatar: userInfo.avatar,
-                    routes: userInfo.routes
+                    routes: userInfo.routes.split(',')
                 }
             })
         })
