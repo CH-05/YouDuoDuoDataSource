@@ -1009,7 +1009,7 @@ sys|schema||mysql.sys|localhost|TRIGGER|G</Grants>
       <CollationName>utf8mb4_0900_ai_ci</CollationName>
     </schema>
     <schema id="292" parent="1" name="youduoduo_db">
-      <LastIntrospectionLocalTimestamp>2024-09-21.08:48:40</LastIntrospectionLocalTimestamp>
+      <LastIntrospectionLocalTimestamp>2024-10-02.03:38:38</LastIntrospectionLocalTimestamp>
       <CollationName>utf8mb4_0900_ai_ci</CollationName>
     </schema>
     <schema id="293" parent="1" name="store_db">
@@ -4102,7 +4102,7 @@ User</ColNames>
       <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
     </key>
     <column id="815" parent="343" name="user_id">
-      <AutoIncrement>10</AutoIncrement>
+      <AutoIncrement>14</AutoIncrement>
       <DasType>int|0s</DasType>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -4121,30 +4121,27 @@ User</ColNames>
     </column>
     <column id="818" parent="343" name="role">
       <Comment>用户角色</Comment>
-      <DasType>enum(&apos;staff&apos;, &apos;admin&apos;)|0e</DasType>
+      <DasType>enum(&apos;staff&apos;, &apos;admin&apos;, &apos;superAdmin&apos;)|0e</DasType>
       <NotNull>1</NotNull>
       <Position>4</Position>
     </column>
-    <column id="819" parent="343" name="created_at">
-      <Comment>创建时间</Comment>
-      <DasType>datetime|0s</DasType>
-      <DefaultExpression>CURRENT_TIMESTAMP</DefaultExpression>
+    <column id="819" parent="343" name="avatar">
+      <Comment>头像</Comment>
+      <DasType>varchar(255)|0s</DasType>
       <Position>5</Position>
     </column>
-    <column id="820" parent="343" name="updated_at">
-      <Comment>更新时间</Comment>
-      <DasType>datetime|0s</DasType>
-      <DefaultExpression>CURRENT_TIMESTAMP</DefaultExpression>
-      <OnUpdate>CURRENT_TIMESTAMP</OnUpdate>
+    <column id="820" parent="343" name="routes">
+      <Comment>路由</Comment>
+      <DasType>varchar(255)|0s</DasType>
       <Position>6</Position>
     </column>
-    <column id="821" parent="343" name="avatar">
-      <Comment>头像</Comment>
+    <column id="821" parent="343" name="created_at">
+      <Comment>创建时间</Comment>
       <DasType>varchar(255)|0s</DasType>
       <Position>7</Position>
     </column>
-    <column id="822" parent="343" name="routes">
-      <Comment>路由</Comment>
+    <column id="822" parent="343" name="updated_at">
+      <Comment>更新时间</Comment>
       <DasType>varchar(255)|0s</DasType>
       <Position>8</Position>
     </column>

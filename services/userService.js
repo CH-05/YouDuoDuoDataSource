@@ -4,6 +4,7 @@ const bcrypt = require('bcrypt')
 const JWT = require('../config/jwt')
 const {verifyToken} = require("../config/jwt");
 const db = require("../db");
+const moment = require("moment");
 
 const userService = {
     //用户登录
@@ -12,7 +13,6 @@ const userService = {
         //比对数据库密码与用户输入密码是否匹配
         db.query(sql, req.body.username, async (err, data) => {
             let result = JSON.parse(JSON.stringify(data));
-            if (err) throw err;
             if (result.length > 0) {//代表数据库有用户
                 const {user_id, username, password} = result[0];
                 let isCorrect = await bcrypt.compare(req.body.password, password)
@@ -36,11 +36,14 @@ const userService = {
         db.query(sql, username, async (err, result) => {
             if (err) throw err;
             if (result.length < 1) {//表示该用户没有注册
+                const created_at = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
+                const updated_at = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
                 //创建基本路由，让用户注册后就拥有页面的基本路由权限(默认为员工)
                 const routes = ["Acl","User","Role","Permission","Product","Trademark","Attr","Spu","Sku"];
                 let password = await bcrypt.hash(req.body.password, 12);
                 const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
-                db.query("insert into users(username,password,routes,avatar) values(?,?,?,?)", [username, password,routes.toString(),avatar])
+                db.query("insert into users(username,password,routes,avatar,created_at,updated_at) values(?,?,?,?,?,?)",
+                    [username, password,routes.toString(),avatar,created_at,updated_at])
                 res.send({code: 200, message: "注册成功，请先登录"})
             } else {
                 res.send({code: 400, message: "该用户已被注册"})
