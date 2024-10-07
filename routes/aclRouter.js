@@ -9,6 +9,8 @@ aclRouter.delete('/removeUser',aclService.removeUser)
 //批量删除用户
 aclRouter.delete('/removeUsers',aclService.removeUsers)
 //添加新用户
-aclRouter.post('/addNewUser',aclService.addNewUser)
+aclRouter.post('/addOrUpdateNewUser',aclService.addOrUpdateNewUser)
+//修改用户权限
+aclRouter.post("/setUserRole",aclService.setUserRole)
 
 module.exports = aclRouter

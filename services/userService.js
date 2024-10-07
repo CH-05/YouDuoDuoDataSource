@@ -42,8 +42,8 @@ const userService = {
                 const routes = ["Acl","User","Role","Permission","Product","Trademark","Attr","Spu","Sku"];
                 let password = await bcrypt.hash(req.body.password, 12);
                 const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
-                db.query("insert into users(username,password,routes,avatar,created_at,updated_at) values(?,?,?,?,?,?)",
-                    [username, password,routes.toString(),avatar,created_at,updated_at])
+                db.query("insert into users(username,password,routes,avatar,role,created_at,updated_at) values(?,?,?,?,?,?,?)",
+                    [username, password,routes.toString(),avatar,"员工",created_at,updated_at])
                 res.send({code: 200, message: "注册成功，请先登录"})
             } else {
                 res.send({code: 400, message: "该用户已被注册"})

@@ -1009,7 +1009,7 @@ sys|schema||mysql.sys|localhost|TRIGGER|G</Grants>
       <CollationName>utf8mb4_0900_ai_ci</CollationName>
     </schema>
     <schema id="292" parent="1" name="youduoduo_db">
-      <LastIntrospectionLocalTimestamp>2024-10-02.03:38:38</LastIntrospectionLocalTimestamp>
+      <LastIntrospectionLocalTimestamp>2024-10-07.07:31:12</LastIntrospectionLocalTimestamp>
       <CollationName>utf8mb4_0900_ai_ci</CollationName>
     </schema>
     <schema id="293" parent="1" name="store_db">
@@ -4102,7 +4102,7 @@ User</ColNames>
       <UnderlyingIndexName>PRIMARY</UnderlyingIndexName>
     </key>
     <column id="815" parent="343" name="user_id">
-      <AutoIncrement>14</AutoIncrement>
+      <AutoIncrement>30</AutoIncrement>
       <DasType>int|0s</DasType>
       <NotNull>1</NotNull>
       <Position>1</Position>
@@ -4121,7 +4121,7 @@ User</ColNames>
     </column>
     <column id="818" parent="343" name="role">
       <Comment>用户角色</Comment>
-      <DasType>enum(&apos;staff&apos;, &apos;admin&apos;, &apos;superAdmin&apos;)|0e</DasType>
+      <DasType>varchar(255)|0s</DasType>
       <NotNull>1</NotNull>
       <Position>4</Position>
     </column>
