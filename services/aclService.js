@@ -1,7 +1,6 @@
 const db = require("../db");
 const bcrypt = require("bcrypt");
 const moment = require("moment");
-const {verifyToken} = require("../config/jwt");
 const aclService = {
     getUserList: (req, res) => {
         const {username} = req.query;
@@ -119,8 +118,9 @@ const aclService = {
                     const routes = ["Acl", "User", "Role", "Permission", "Product", "Trademark", "Attr", "Spu", "Sku"];
                     let password = await bcrypt.hash(req.body.password, 12);
                     const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
+                    const role = {id: 0, name: "客户"}
                     db.query("insert into users(username,password,routes,avatar,role,created_at,updated_at) values(?,?,?,?,?,?,?)",
-                        [username, password, routes.toString(), avatar, "员工", created_at, updated_at])
+                        [username, password, routes.toString(), avatar, JSON.stringify(role), created_at, updated_at])
                     res.send({
                         code: 200,
                         message: '添加用户成功'
@@ -137,9 +137,10 @@ const aclService = {
     //修改用户权限
     setUserRole: (req, res) => {
         const {user_id,role} = req.body;
-        console.log(user_id, role);
+        console.log("role",user_id, role);
         const sql = "update users set role = ? , updated_at = ? where user_id in (?);";
-        db.query(sql,[role,new Date(),user_id], (err, result) => {
+        const updated_at = moment(new Date()).format("YYYY-MM-DD HH:mm:ss");
+        db.query(sql,[JSON.stringify(role),updated_at,user_id], (err, result) => {
             console.log(result);
             if (result.changedRows === 1) {
                 res.send({
@@ -153,7 +154,6 @@ const aclService = {
                 })
             }
         })
-
     }
 }
 module.exports = aclService;

@@ -42,8 +42,9 @@ const userService = {
                 const routes = ["Acl","User","Role","Permission","Product","Trademark","Attr","Spu","Sku"];
                 let password = await bcrypt.hash(req.body.password, 12);
                 const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
+                const role = {id: 0, name: "客户"}
                 db.query("insert into users(username,password,routes,avatar,role,created_at,updated_at) values(?,?,?,?,?,?,?)",
-                    [username, password,routes.toString(),avatar,"员工",created_at,updated_at])
+                    [username, password,routes.toString(),avatar,JSON.stringify(role),created_at,updated_at])
                 res.send({code: 200, message: "注册成功，请先登录"})
             } else {
                 res.send({code: 400, message: "该用户已被注册"})
@@ -68,7 +69,7 @@ const userService = {
                 message: "获取用户基本信息成功",
                 data: {
                     username: userInfo.username,
-                    role: userInfo.role,
+                    role: JSON.parse(userInfo.role),
                     avatar: userInfo.avatar,
                     routes: userInfo.routes.split(',')
                 }
