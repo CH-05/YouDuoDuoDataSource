@@ -2,6 +2,7 @@ const express = require('express');
 const userRouter = require("./routes/userRouter");
 const {verifyToken} = require("./config/jwt");
 const aclRouter = require("./routes/aclRouter");
+const permissionRouter = require("./routes/PermissionRouter");
 const app = express();
 
 app.use(express.json());// 让我们能够通过 request.body 拿到请求体中 json 格式的数据。
@@ -45,6 +46,7 @@ app.use(express.urlencoded({extended: true}));//解析客户端发送的 URL 编
 //注册路由
 app.use(userRouter)
 app.use(aclRouter)
+app.use(permissionRouter)
 
 app.listen(5177, () => {
     console.log("后端服务已开启")

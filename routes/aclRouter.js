@@ -12,5 +12,10 @@ aclRouter.delete('/removeUsers',aclService.removeUsers)
 aclRouter.post('/addOrUpdateNewUser',aclService.addOrUpdateNewUser)
 //修改用户权限
 aclRouter.post("/setUserRole",aclService.setUserRole)
-
+//获取所有用户角色
+aclRouter.get('/getRoleList/page=:page/limit=:limit', aclService.getRoleList)
+//获取用户权限菜单
+aclRouter.get('/getPermissionMenu', aclService.getPermissionMenu)
+//添加用户权限
+aclRouter.post('/addUserPermission', aclService.addUserPermission)
 module.exports = aclRouter
