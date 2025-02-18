@@ -418,56 +418,70 @@ const aclService = {
         }
     },
     //获取所有用户角色
-    getRoleList: (req, res) => {
-        const {name} = req.query;
+    getRoleList: async (req, res) => {
+        const { keyword } = req.query;
         const page = parseInt(req.params.page);
         const limit = parseInt(req.params.limit);
-        const start = (page - 1) * limit;
+        const offset = (page - 1) * limit;
 
-        // 获取总数的查询
-        db.query("SELECT COUNT(*) as total FROM roles", (err, countResult) => {
-            if (err) {
-                console.error('获取角色总数错误:', err);
-                return res.send({
-                    code: 201,
-                    message: '获取角色列表失败'
-                });
-            }
-
-            const total = countResult[0].total;
-            let sql;
+        try {
+            let countSql = "SELECT COUNT(*) as total FROM roles";
+            let countParams = [];
+            
+            let sql = "SELECT * FROM roles";
             let params = [];
 
-            if (name) {
-                sql = `SELECT * FROM roles WHERE role_name LIKE ? LIMIT ? OFFSET ?`;
-                params = [`%${name}%`, limit, start];
-            } else {
-                sql = `SELECT * FROM roles LIMIT ? OFFSET ?`;
-                params = [limit, start];
+            // 如果有搜索关键字，添加搜索条件
+            if (keyword) {
+                countSql += " WHERE role_name LIKE ?";
+                sql += " WHERE role_name LIKE ?";
+                const searchParam = `%${keyword}%`;
+                countParams.push(searchParam);
+                params.push(searchParam);
             }
 
-            db.query(sql, params, (err, result) => {
-                if (err) {
-                    console.error('获取角色列表错误:', err);
-                    return res.send({
-                        code: 201,
-                        message: '获取角色列表失败'
-                    });
-                }
+            // 获取总数
+            const [countResult] = await db.promise().query(countSql, countParams);
+            const total = countResult[0].total;
 
-                res.send({
-                    code: 200,
-                    message: "查询成功",
-                    data: {
-                        records: result,
-                        total,
-                        size: limit,
-                        current: page,
-                        pages: Math.ceil(total / limit)
-                    }
-                });
+            // 如果是搜索，不使用分页限制
+            if (keyword) {
+                sql += " ORDER BY role_id ASC";
+            } else {
+                // 非搜索状态下使用分页
+                sql += " ORDER BY role_id ASC LIMIT ? OFFSET ?";
+                params.push(limit, offset);
+            }
+
+            // 执行查询
+            const [roles] = await db.promise().query(sql, params);
+
+            // 格式化日期
+            const formattedRoles = roles.map(role => ({
+                ...role,
+                created_at: moment(role.created_at).format('YYYY-MM-DD HH:mm:ss'),
+                updated_at: moment(role.updated_at).format('YYYY-MM-DD HH:mm:ss')
+            }));
+
+            res.send({
+                code: 200,
+                message: "查询成功",
+                data: {
+                    records: formattedRoles,
+                    total: keyword ? formattedRoles.length : total,
+                    size: limit,
+                    current: page,
+                    pages: Math.ceil(total / limit)
+                }
             });
-        });
+        } catch (error) {
+            console.error('获取角色列表错误:', error);
+            res.send({
+                code: 201,
+                message: '获取角色列表失败',
+                error: error.message
+            });
+        }
     },
     //获取用户权限菜单
     getPermissionMenu: (req, res) => {
@@ -629,25 +643,40 @@ const aclService = {
         const { role_name, role_code, description, status } = req.body;
         
         try {
-            // 检查角色名称是否已存在
-            const [existingRoles] = await db.query(
+            // 参数验证
+            if (!role_name || !role_code) {
+                return res.send({
+                    code: 201,
+                    message: '角色名称和编码不能为空'
+                });
+            }
+
+            // 检查角色名称和编码是否已存在
+            const [existingRoles] = await db.promise().query(
                 'SELECT role_id FROM roles WHERE role_name = ? OR role_code = ?',
                 [role_name, role_code]
             );
-            
+
             if (existingRoles.length > 0) {
                 return res.send({
-                    code: 400,
+                    code: 201,
                     message: '角色名称或编码已存在'
                 });
             }
-            
+
             // 插入新角色
-            const [result] = await db.query(
-                'INSERT INTO roles (role_name, role_code, description, status) VALUES (?, ?, ?, ?)',
-                [role_name, role_code, description, status]
+            const [result] = await db.promise().query(
+                `INSERT INTO roles (
+                    role_name, 
+                    role_code, 
+                    description, 
+                    status,
+                    created_at,
+                    updated_at
+                ) VALUES (?, ?, ?, ?, NOW(), NOW())`,
+                [role_name, role_code, description || '', status || 1]
             );
-            
+
             res.send({
                 code: 200,
                 message: '添加角色成功',
@@ -658,8 +687,9 @@ const aclService = {
         } catch (error) {
             console.error('添加角色失败:', error);
             res.send({
-                code: 500,
-                message: '添加角色失败'
+                code: 201,
+                message: '添加角色失败',
+                error: error.message
             });
         }
     },
