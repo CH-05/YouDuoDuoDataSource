@@ -1,55 +1,66 @@
 const express = require('express');
+const cors = require('cors');
 const userRouter = require("./routes/userRouter");
-const {verifyToken} = require("./config/jwt");
 const aclRouter = require("./routes/aclRouter");
 const permissionRouter = require("./routes/PermissionRouter");
+const trademarkRouter = require("./routes/trademarkRouter");
+const categoryRouter = require('./routes/categoryRouter');
+const spuRouter = require('./routes/spuRouter');
+const skuRouter = require('./routes/sku');
+const menuRouter = require('./routes/menuRouter');
+const {verifyToken} = require("./config/jwt");
+const path = require('path');
+const attrRouter = require('./routes/attrRouter');
 const app = express();
 
+
+// 中间件
+app.use(cors());
 app.use(express.json());// 让我们能够通过 request.body 拿到请求体中 json 格式的数据。
 app.use(express.urlencoded({extended: true}));//解析客户端发送的 URL 编码格式的请求体数据，将其转换为 JavaScript 对象，并将其赋值给 req.body。通常用于处理通过表单提交的请求。
 
-//token验证
-// app.use((req, res, next) => {
-// // //定义不需要权限验证的路径
-//     let noAuthorizationUrl = [
-//         '/login',
-//         '/register'
-//     ]
-//     for (const item of noAuthorizationUrl) {
-//         if (req.url.includes(item)) {
-//             next();
-//             return;
-//         }
-//     }
-//     //如果请求头中有token的话，验证当前token是否过期
-//     let token = req.headers.authorization.split(' ')[1]
-//     if (token) {
-//         let payload = verifyToken(token);
-//         if (payload) {
-//             // const newToken = JWT.generateToken({
-//             //     id: payload.id, username: payload.username
-//             // }, "30s")//按秒计算，过30s不刷新，页面自动跳转到登录页
-//             res.header("Authorization", token)
-//             next()
-//         } else {
-//             res.status(401)
-//                 .send({
-//                     status: 401,
-//                     message: 'Token过期'
-//                 })
-//         }
-//     }else{
-//         res.send({status: 501,message:"服务器出错了"})
-//     }
-// })
+// 添加调试中间件
+app.use((req, res, next) => {
+  console.log('收到请求:', {
+    path: req.path,
+    method: req.method,
+    body: req.body,
+    query: req.query
+  });
+  next();
+});
+
+// 添加静态文件服务中间件
+// 假设你的图片存储在项目根目录的 public/uploads/logo 文件夹下
+app.use('/public/uploads/logo', express.static(path.join(__dirname, 'public/uploads/logo')));
+app.use('/public/uploads/spu', express.static(path.join(__dirname, 'public/uploads/spu')));
+app.use('/public/uploads/sku', express.static(path.join(__dirname, 'public/uploads/sku')));
 
 //注册路由
-app.use(userRouter)
-app.use(aclRouter)
+app.use('/user', userRouter)
+app.use('/acl', aclRouter)
 app.use(permissionRouter)
+app.use('/product', trademarkRouter)
+app.use('/product', attrRouter)
+app.use('/product/category', categoryRouter)
+app.use('/product/spu', spuRouter)
+app.use('/product/sku', skuRouter)
+app.use('/menu', menuRouter)
 
-app.listen(5177, () => {
-    console.log("后端服务已开启")
+// 添加错误处理中间件
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).send({
+    code: 500,
+    message: '服务器内部错误',
+    error: err.message
+  });
 });
+
+const PORT = 3000  // 修改为与前端代理配置匹配的端口
+
+app.listen(PORT, () => {
+  console.log(`Server is running on port ${PORT}`)
+})
 
 module.exports = app;

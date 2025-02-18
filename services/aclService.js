@@ -3,222 +3,419 @@ const bcrypt = require("bcrypt");
 const moment = require("moment");
 const aclService = {
     //获取用户列表
-    getUserList: (req, res) => {
-        const {username} = req.query;
+    getUserList: async (req, res) => {
+        const { keyword } = req.query;
         const page = parseInt(req.params.page);
         const limit = parseInt(req.params.limit);
-        const start = (page - 1) * limit;
-        db.query("select count(*) from users", (err, result) => {
-            const total = result[0]['count(*)']
-            let sql;
-            if (typeof username === 'string' && username.length > 0) {
-                sql = `select *
-                       from users
-                       where username = ?`;
-                db.query(sql, [username], (err, result) => {
-                    if (result.length > 0) {
-                        res.send({
-                            code: 200,
-                            message: "查询成功",
-                            data: {
-                                result, total: 1
-                            }
-                        })
-                    } else {
-                        res.send({
-                            code: 501,
-                            message: "查询不到此用户"
-                        })
-                    }
-                })
-            } else {
-                sql = "select user_id,username,role,created_at,updated_at from users limit ?,?";
-                db.query(sql, [start, limit], (err, result) => {
-                    if (err) {
-                        console.log("查询失败");
-                        throw err.message
-                    }
-                    if (result) {
-                        res.send({
-                            code: 200,
-                            message: '请求用户列表成功',
-                            data: {
-                                result, total
-                            }
-                        })
-                    }
-                })
-            }
-        });
+        const offset = (page - 1) * limit;
 
+        try {
+            // 获取总数的查询
+            let countSql = "SELECT COUNT(*) as total FROM users";
+            let countParams = [];
+            
+            if (keyword) {
+                countSql += " WHERE username LIKE ? OR nickname LIKE ?";
+                countParams.push(`%${keyword}%`, `%${keyword}%`);
+            }
+
+            const [countResult] = await db.promise().query(countSql, countParams);
+            const total = countResult[0].total;
+
+            // 查询用户数据
+            let sql = `
+                SELECT u.user_id, u.username, u.nickname, u.email, u.phone, 
+                       u.status, u.created_at, u.updated_at,
+                       GROUP_CONCAT(r.role_name) as role_names,
+                       GROUP_CONCAT(r.role_id) as role_ids
+                FROM users u
+                LEFT JOIN user_role ur ON u.user_id = ur.user_id
+                LEFT JOIN roles r ON ur.role_id = r.role_id
+            `;
+            
+            let params = [];
+            if (keyword) {
+                sql += " WHERE u.username LIKE ? OR u.nickname LIKE ?";
+                params.push(`%${keyword}%`, `%${keyword}%`);
+            }
+            
+            sql += " GROUP BY u.user_id ORDER BY u.created_at DESC LIMIT ? OFFSET ?";
+            params.push(limit, offset);
+
+            const [users] = await db.promise().query(sql, params);
+
+            // 处理每个用户的角色信息
+            const processedUsers = users.map(user => ({
+                ...user,
+                roles: user.role_names ? 
+                    user.role_names.split(',').map((name, index) => ({
+                        role_name: name,
+                        role_id: user.role_ids.split(',')[index]
+                    })) : [],
+                created_at: moment(user.created_at).format('YYYY-MM-DD HH:mm:ss'),
+                updated_at: moment(user.updated_at).format('YYYY-MM-DD HH:mm:ss')
+            }));
+
+            res.send({
+                code: 200,
+                message: '获取成功',
+                data: {
+                    records: processedUsers,
+                    total,
+                    size: limit,
+                    current: page,
+                    pages: Math.ceil(total / limit)
+                }
+            });
+        } catch (error) {
+            console.error('获取用户列表错误:', error);
+            res.send({
+                code: 201,
+                message: '获取用户列表失败',
+                error: error.message
+            });
+        }
     },
     //单个删除用户
-    removeUser: (req, res) => {
-        const {user_id} = req.body;
-        console.log(user_id);
-        const sql = "delete from users where user_id = ?";
-        db.query(sql, [user_id], (err, result) => {
-            if (err) throw err.message
-            if (result) {
-                res.send({
-                    code: 200,
-                    message: "删除该用户成功"
-                })
-            } else {
-                res.send({
-                    code: 505,
-                    message: "删除失败"
-                })
+    removeUser: async (req, res) => {
+        const userId = req.params.userId;
+
+        try {
+            // 检查是否是管理员账号
+            const [user] = await db.promise().query(
+                `SELECT r.role_id 
+                FROM users u 
+                LEFT JOIN user_role ur ON u.user_id = ur.user_id 
+                LEFT JOIN roles r ON ur.role_id = r.role_id 
+                WHERE u.user_id = ?`,
+                [userId]
+            );
+
+            if (user.some(u => u.role_id === 1)) {
+                return res.send({
+                    code: 201,
+                    message: '不能删除管理员账号'
+                });
             }
-        })
-    },
-    //批量删除用户
-    removeUsers: (req, res) => {
-        const {users_id} = req.body;
-        const sql = "delete from users where user_id in (?)";
-        db.query(sql, [users_id], (err, result) => {
-            if (err) throw err;
-            if (result) {
+
+            // 开始事务
+            const connection = await db.promise().getConnection();
+            await connection.beginTransaction();
+
+            try {
+                // 删除用户角色关联
+                await connection.query('DELETE FROM user_role WHERE user_id = ?', [userId]);
+                
+                // 删除用户
+                const [result] = await connection.query('DELETE FROM users WHERE user_id = ?', [userId]);
+
+                if (result.affectedRows === 0) {
+                    await connection.rollback();
+                    return res.send({
+                        code: 201,
+                        message: '用户不存在'
+                    });
+                }
+
+                await connection.commit();
                 res.send({
                     code: 200,
                     message: '删除成功'
-                })
+                });
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
             }
-        })
+        } catch (error) {
+            console.error('删除用户错误:', error);
+            res.send({
+                code: 201,
+                message: '删除失败',
+                error: error.message
+            });
+        }
+    },
+    //批量删除用户
+    removeUsers: async (req, res) => {
+        const { users_id } = req.body;
 
-    },
-    //添加或更新用户
-    addOrUpdateNewUser: (req, res) => {
-        const {user_id, username, password} = req.body;
-        //从数据库里中判断是否存在相同用户
-        const sql = "select username from users where username = ?";
-        db.query(sql, [username], async (err, result) => {
-            if (result.length < 1) {//代表数据库中查找没得用户
-                let updated_at;
-                //根据前端是否传入user_id来判断用户是添加或更新用户
-                if (Number(user_id)) {//代表用户传入了user_id：即属于更新用户
-                    const sql = "update users set username = ? , updated_at = ? where user_id in (?);";
-                    db.query(sql, [username, new Date(), user_id], (err, result) => {
-                        if (result.changedRows === 1) {//代表更新成功
-                            res.send({
-                                code: 200,
-                                message: '更新用户成功'
-                            })
-                        } else {
-                            res.send({
-                                code: 501,
-                                message: '更新用户失败'
-                            })
-                        }
-                    })
-                } else {//添加新用户
-                    //创建基本路由，让用户注册后就拥有页面的基本路由权限(默认为员工)
-                    const routes = [{
-                        id: 0,
-                        name: "权限列表",
-                        level: 1,
-                        children: [
-                            {
-                                id: 1,
-                                name: "权限管理",
-                                label: "Acl",
-                                level: 2,
-                                children: [
-                                    {
-                                        id: 3,
-                                        name: "用户管理",
-                                        label: "User",
-                                        level: 3,
-                                        select: false
-                                    }, {
-                                        id: 4,
-                                        name: "角色管理",
-                                        label: "Role",
-                                        level: 3,
-                                        select: false
-                                    }, {
-                                        id: 5,
-                                        name: "菜单管理",
-                                        label: "Permission",
-                                        level: 3,
-                                        select: false
-                                    }
-                                ],
-                                select: false
-                            }, {
-                                id: 2,
-                                name: "粮油管理",
-                                label: "Product",
-                                level: 2,
-                                children: [
-                                    {
-                                        id: 6,
-                                        name: "品牌管理",
-                                        label: "Trademark",
-                                        level: 3,
-                                        select: false
-                                    }, {
-                                        id: 7,
-                                        name: "属性管理",
-                                        label: "Attr",
-                                        level: 3,
-                                        select: false
-                                    }, {
-                                        id: 8,
-                                        name: "SPU管理",
-                                        label: "Spu",
-                                        level: 3,
-                                        select: false
-                                    }, {
-                                        id: 9,
-                                        name: "SKU管理",
-                                        label: "Sku",
-                                        level: 3,
-                                        select: false
-                                    }
-                                ],
-                                select: false
-                            }
-                        ],
-                        select: false
-                    }]
-                    let password = await bcrypt.hash(req.body.password, 12);
-                    const avatar = 'https://cube.elemecdn.com/0/88/03b0d39583f48206768a7534e55bcpng.png';
-                    const role = {id: 0, name: "客户"}
-                    db.query("insert into users(username,password,routes,avatar,role,created_at,updated_at) values(?,?,?,?,?,?,?)",
-                        [username, password, JSON.stringify(routes), avatar, JSON.stringify(role), new Date(), new Date()])
-                    res.send({
-                        code: 200,
-                        message: '添加用户成功'
-                    })
-                }
-            } else {
-                res.send({
-                    code: 501,
-                    message: '该用户名已经存在，请换一个名字'
-                })
+        try {
+            // 检查是否包含管理员账号
+            const [users] = await db.promise().query(
+                `SELECT r.role_id 
+                FROM users u 
+                LEFT JOIN user_role ur ON u.user_id = ur.user_id 
+                LEFT JOIN roles r ON ur.role_id = r.role_id 
+                WHERE u.user_id IN (?)`,
+                [users_id]
+            );
+
+            if (users.some(u => u.role_id === 1)) {
+                return res.send({
+                    code: 201,
+                    message: '选中的用户中包含管理员账号，无法删除'
+                });
             }
-        })
-    },
-    //分配用户角色
-    setUserRole: (req, res) => {
-        const {user_id, role} = req.body;
-        console.log("role", user_id, role);
-        const sql = "update users set role = ? , updated_at = ? where user_id in (?);";
-        db.query(sql, [JSON.stringify(role), new Date(), user_id], (err, result) => {
-            console.log(result);
-            if (result.changedRows === 1) {
+
+            // 开始事务
+            const connection = await db.promise().getConnection();
+            await connection.beginTransaction();
+
+            try {
+                // 删除用户角色关联
+                await connection.query('DELETE FROM user_role WHERE user_id IN (?)', [users_id]);
+                
+                // 删除用户
+                await connection.query('DELETE FROM users WHERE user_id IN (?)', [users_id]);
+
+                await connection.commit();
                 res.send({
                     code: 200,
-                    message: "修改用户权限成功"
-                })
-            } else {
-                res.send({
-                    code: 0,
-                    message: "修改用户权限失败"
-                })
+                    message: '批量删除成功'
+                });
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
             }
-        })
+        } catch (error) {
+            console.error('批量删除用户错误:', error);
+            res.send({
+                code: 201,
+                message: '批量删除失败',
+                error: error.message
+            });
+        }
+    },
+    //添加或更新用户
+    addOrUpdateNewUser: async (req, res) => {
+        const { user_id, username, password, nickname, email, phone, status, role_ids } = req.body;
+        
+        try {
+            // 更新用户
+            if (user_id) {
+                // 检查用户是否存在
+                const [existingUser] = await db.promise().query(
+                    'SELECT user_id FROM users WHERE user_id = ?',
+                    [user_id]
+                );
+
+                if (existingUser.length === 0) {
+                    return res.send({
+                        code: 201,
+                        message: '用户不存在'
+                    });
+                }
+
+                // 检查用户名是否被其他用户使用
+                const [nameConflict] = await db.promise().query(
+                    'SELECT user_id FROM users WHERE username = ? AND user_id != ?',
+                    [username, user_id]
+                );
+
+                if (nameConflict.length > 0) {
+                    return res.send({
+                        code: 201,
+                        message: '该用户名已被使用'
+                    });
+                }
+
+                // 开始事务
+                const connection = await db.promise().getConnection();
+                await connection.beginTransaction();
+
+                try {
+                    // 更新用户基本信息
+                    await connection.query(
+                        `UPDATE users SET 
+                            username = ?,
+                            nickname = ?,
+                            email = ?,
+                            phone = ?,
+                            status = ?,
+                            updated_at = NOW()
+                        WHERE user_id = ?`,
+                        [username, nickname, email, phone, status, user_id]
+                    );
+
+                    // 如果提供了角色ID，更新用户角色
+                    if (role_ids) {
+                        // 删除原有角色
+                        await connection.query(
+                            'DELETE FROM user_role WHERE user_id = ?',
+                            [user_id]
+                        );
+
+                        // 添加新角色
+                        if (role_ids.length > 0) {
+                            const roleValues = role_ids.map(roleId => [user_id, roleId]);
+                            await connection.query(
+                                'INSERT INTO user_role (user_id, role_id) VALUES ?',
+                                [roleValues]
+                            );
+                        }
+                    }
+
+                    await connection.commit();
+                    res.send({
+                        code: 200,
+                        message: '更新用户成功'
+                    });
+                } catch (error) {
+                    await connection.rollback();
+                    throw error;
+                } finally {
+                    connection.release();
+                }
+            } 
+            // 添加新用户
+            else {
+                if (!username || !password) {
+                    return res.send({
+                        code: 201,
+                        message: '用户名和密码不能为空'
+                    });
+                }
+
+                // 检查用户名是否已存在
+                const [existingUser] = await db.promise().query(
+                    'SELECT user_id FROM users WHERE username = ?',
+                    [username]
+                );
+
+                if (existingUser.length > 0) {
+                    return res.send({
+                        code: 201,
+                        message: '该用户名已存在'
+                    });
+                }
+
+                // 加密密码
+                const hashedPassword = await bcrypt.hash(password, 12);
+
+                // 开始事务
+                const connection = await db.promise().getConnection();
+                await connection.beginTransaction();
+
+                try {
+                    // 插入用户基本信息
+                    const [insertResult] = await connection.query(
+                        `INSERT INTO users (
+                            username,
+                            password,
+                            nickname,
+                            email,
+                            phone,
+                            status,
+                            created_at,
+                            updated_at
+                        ) VALUES (?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                        [username, hashedPassword, nickname, email, phone, status]
+                    );
+
+                    const userId = insertResult.insertId;
+
+                    // 如果提供了角色ID，添加用户角色关联
+                    if (role_ids && role_ids.length > 0) {
+                        const roleValues = role_ids.map(roleId => [userId, roleId]);
+                        await connection.query(
+                            'INSERT INTO user_role (user_id, role_id) VALUES ?',
+                            [roleValues]
+                        );
+                    }
+
+                    await connection.commit();
+                    res.send({
+                        code: 200,
+                        message: '添加用户成功',
+                        data: { user_id: userId }
+                    });
+                } catch (error) {
+                    await connection.rollback();
+                    throw error;
+                } finally {
+                    connection.release();
+                }
+            }
+        } catch (error) {
+            console.error('操作用户失败:', error);
+            res.send({
+                code: 201,
+                message: user_id ? '更新用户失败' : '添加用户失败',
+                error: error.message
+            });
+        }
+    },
+    //设置用户角色
+    setUserRole: async (req, res) => {
+        const { user_id, role_ids } = req.body;
+
+        try {
+            // 检查用户是否存在
+            const [user] = await db.promise().query(
+                'SELECT user_id FROM users WHERE user_id = ?',
+                [user_id]
+            );
+
+            if (user.length === 0) {
+                return res.send({
+                    code: 201,
+                    message: '用户不存在'
+                });
+            }
+
+            // 检查是否是管理员账号
+            const [userRoles] = await db.promise().query(
+                `SELECT role_id FROM user_role WHERE user_id = ?`,
+                [user_id]
+            );
+
+            if (userRoles.some(r => r.role_id === 1)) {
+                return res.send({
+                    code: 201,
+                    message: '不能修改管理员角色'
+                });
+            }
+
+            // 开始事务
+            const connection = await db.promise().getConnection();
+            await connection.beginTransaction();
+
+            try {
+                // 删除原有角色
+                await connection.query('DELETE FROM user_role WHERE user_id = ?', [user_id]);
+
+                // 添加新角色
+                if (role_ids && role_ids.length > 0) {
+                    const roleValues = role_ids.map(roleId => [user_id, roleId]);
+                    await connection.query(
+                        'INSERT INTO user_role (user_id, role_id) VALUES ?',
+                        [roleValues]
+                    );
+                }
+
+                await connection.commit();
+                res.send({
+                    code: 200,
+                    message: '角色设置成功'
+                });
+            } catch (error) {
+                await connection.rollback();
+                throw error;
+            } finally {
+                connection.release();
+            }
+        } catch (error) {
+            console.error('设置用户角色错误:', error);
+            res.send({
+                code: 201,
+                message: '角色设置失败',
+                error: error.message
+            });
+        }
     },
     //获取所有用户角色
     getRoleList: (req, res) => {
@@ -226,50 +423,50 @@ const aclService = {
         const page = parseInt(req.params.page);
         const limit = parseInt(req.params.limit);
         const start = (page - 1) * limit;
-        db.query("select count(*) from users", (err, result) => {
-            const total = result[0]['count(*)']
-            let sql;
-            // SELECT *
-            // FROM 用户表
-            // WHERE JSON_UNQUOTE(JSON_EXTRACT(role, '$.name')) = '管理员';
-            if (typeof name === 'string' && name.length > 0) {
-                sql = `select *
-                       from users
-                       where json_unquote(json_extract(role, '$.name')) = ?`;
-                db.query(sql, [name], (err, result) => {
-                    if (result.length > 0) {
-                        res.send({
-                            code: 200,
-                            message: "查询成功",
-                            data: {
-                                result, total: 1
-                            }
-                        })
-                    } else {
-                        res.send({
-                            code: 501,
-                            message: "查询不到该角色"
-                        })
-                    }
-                })
-            } else {
-                sql = "select user_id,username,role,created_at,updated_at from users limit ?,?";
-                db.query(sql, [start, limit], (err, result) => {
-                    if (err) {
-                        console.log("查询失败");
-                        throw err.message
-                    }
-                    if (result) {
-                        res.send({
-                            code: 200,
-                            message: '请求用户列表成功',
-                            data: {
-                                result, total
-                            }
-                        })
-                    }
-                })
+
+        // 获取总数的查询
+        db.query("SELECT COUNT(*) as total FROM roles", (err, countResult) => {
+            if (err) {
+                console.error('获取角色总数错误:', err);
+                return res.send({
+                    code: 201,
+                    message: '获取角色列表失败'
+                });
             }
+
+            const total = countResult[0].total;
+            let sql;
+            let params = [];
+
+            if (name) {
+                sql = `SELECT * FROM roles WHERE role_name LIKE ? LIMIT ? OFFSET ?`;
+                params = [`%${name}%`, limit, start];
+            } else {
+                sql = `SELECT * FROM roles LIMIT ? OFFSET ?`;
+                params = [limit, start];
+            }
+
+            db.query(sql, params, (err, result) => {
+                if (err) {
+                    console.error('获取角色列表错误:', err);
+                    return res.send({
+                        code: 201,
+                        message: '获取角色列表失败'
+                    });
+                }
+
+                res.send({
+                    code: 200,
+                    message: "查询成功",
+                    data: {
+                        records: result,
+                        total,
+                        size: limit,
+                        current: page,
+                        pages: Math.ceil(total / limit)
+                    }
+                });
+            });
         });
     },
     //获取用户权限菜单
@@ -399,6 +596,318 @@ const aclService = {
                 res.send({code: 400, message: "用户不存在"})
             }
         })
+    },
+    //获取用户角色
+    getUserRoles: async (req, res) => {
+        const userId = req.params.userId;
+        
+        try {
+            const sql = `
+                SELECT r.role_id, r.role_name, r.role_code, r.description
+                FROM roles r
+                INNER JOIN user_role ur ON r.role_id = ur.role_id
+                WHERE ur.user_id = ?
+            `;
+            
+            const [roles] = await db.query(sql, [userId]);
+            
+            res.send({
+                code: 200,
+                message: "获取用户角色成功",
+                data: roles
+            });
+        } catch (error) {
+            console.error("获取用户角色失败:", error);
+            res.send({
+                code: 500,
+                message: "获取用户角色失败"
+            });
+        }
+    },
+    //添加角色
+    addRole: async (req, res) => {
+        const { role_name, role_code, description, status } = req.body;
+        
+        try {
+            // 检查角色名称是否已存在
+            const [existingRoles] = await db.query(
+                'SELECT role_id FROM roles WHERE role_name = ? OR role_code = ?',
+                [role_name, role_code]
+            );
+            
+            if (existingRoles.length > 0) {
+                return res.send({
+                    code: 400,
+                    message: '角色名称或编码已存在'
+                });
+            }
+            
+            // 插入新角色
+            const [result] = await db.query(
+                'INSERT INTO roles (role_name, role_code, description, status) VALUES (?, ?, ?, ?)',
+                [role_name, role_code, description, status]
+            );
+            
+            res.send({
+                code: 200,
+                message: '添加角色成功',
+                data: {
+                    role_id: result.insertId
+                }
+            });
+        } catch (error) {
+            console.error('添加角色失败:', error);
+            res.send({
+                code: 500,
+                message: '添加角色失败'
+            });
+        }
+    },
+    //更新角色
+    updateRole: async (req, res) => {
+        const roleId = req.params.roleId;
+        const { role_name, role_code, description, status } = req.body;
+        
+        try {
+            // 检查角色是否存在
+            const [existingRole] = await db.query(
+                'SELECT role_id FROM roles WHERE role_id = ?',
+                [roleId]
+            );
+            
+            if (existingRole.length === 0) {
+                return res.send({
+                    code: 404,
+                    message: '角色不存在'
+                });
+            }
+            
+            // 检查新的角色名称或编码是否与其他角色冲突
+            const [conflictingRoles] = await db.query(
+                'SELECT role_id FROM roles WHERE (role_name = ? OR role_code = ?) AND role_id != ?',
+                [role_name, role_code, roleId]
+            );
+            
+            if (conflictingRoles.length > 0) {
+                return res.send({
+                    code: 400,
+                    message: '角色名称或编码已被其他角色使用'
+                });
+            }
+            
+            // 更新角色
+            await db.query(
+                'UPDATE roles SET role_name = ?, role_code = ?, description = ?, status = ? WHERE role_id = ?',
+                [role_name, role_code, description, status, roleId]
+            );
+            
+            res.send({
+                code: 200,
+                message: '更新角色成功'
+            });
+        } catch (error) {
+            console.error('更新角色失败:', error);
+            res.send({
+                code: 500,
+                message: '更新角色失败'
+            });
+        }
+    },
+    //删除角色
+    deleteRole: async (req, res) => {
+        const roleId = req.params.roleId;
+        
+        try {
+            // 检查角色是否存在
+            const [existingRole] = await db.query(
+                'SELECT role_id FROM roles WHERE role_id = ?',
+                [roleId]
+            );
+            
+            if (existingRole.length === 0) {
+                return res.send({
+                    code: 404,
+                    message: '角色不存在'
+                });
+            }
+            
+            // 检查是否有用户正在使用该角色
+            const [usersWithRole] = await db.query(
+                'SELECT user_id FROM user_role WHERE role_id = ?',
+                [roleId]
+            );
+            
+            if (usersWithRole.length > 0) {
+                return res.send({
+                    code: 400,
+                    message: '该角色正在被用户使用，无法删除'
+                });
+            }
+            
+            // 删除角色
+            await db.query('DELETE FROM roles WHERE role_id = ?', [roleId]);
+            
+            res.send({
+                code: 200,
+                message: '删除角色成功'
+            });
+        } catch (error) {
+            console.error('删除角色失败:', error);
+            res.send({
+                code: 500,
+                message: '删除角色失败'
+            });
+        }
+    },
+    // 更新用户状态
+    updateUserStatus: async (req, res) => {
+        const { userId } = req.params;
+        const { status } = req.body;
+
+        try {
+            // 检查是否是管理员账号
+            const [user] = await db.promise().query(
+                `SELECT u.user_id, r.role_id 
+                FROM users u 
+                LEFT JOIN user_role ur ON u.user_id = ur.user_id 
+                LEFT JOIN roles r ON ur.role_id = r.role_id 
+                WHERE u.user_id = ?`,
+                [userId]
+            );
+
+            if (user.some(u => u.role_id === 1)) {
+                return res.send({
+                    code: 201,
+                    message: '不能修改管理员状态'
+                });
+            }
+
+            const [result] = await db.promise().query(
+                'UPDATE users SET status = ? WHERE user_id = ?',
+                [status, userId]
+            );
+
+            if (result.affectedRows === 0) {
+                return res.send({
+                    code: 201,
+                    message: '用户不存在'
+                });
+            }
+
+            res.send({
+                code: 200,
+                message: '状态更新成功'
+            });
+        } catch (error) {
+            console.error('更新用户状态错误:', error);
+            res.send({
+                code: 201,
+                message: '更新用户状态失败',
+                error: error.message
+            });
+        }
+    },
+    // 重置用户密码
+    resetPassword: async (req, res) => {
+        const { userId } = req.params;
+        const defaultPassword = '123456';
+
+        try {
+            // 检查是否是管理员账号
+            const [user] = await db.promise().query(
+                `SELECT u.user_id, r.role_id 
+                FROM users u 
+                LEFT JOIN user_role ur ON u.user_id = ur.user_id 
+                LEFT JOIN roles r ON ur.role_id = r.role_id 
+                WHERE u.user_id = ?`,
+                [userId]
+            );
+
+            if (user.some(u => u.role_id === 1)) {
+                return res.send({
+                    code: 201,
+                    message: '不能重置管理员密码'
+                });
+            }
+
+            const hashedPassword = await bcrypt.hash(defaultPassword, 12);
+            
+            const [result] = await db.promise().query(
+                'UPDATE users SET password = ? WHERE user_id = ?',
+                [hashedPassword, userId]
+            );
+
+            if (result.affectedRows === 0) {
+                return res.send({
+                    code: 201,
+                    message: '用户不存在'
+                });
+            }
+
+            res.send({
+                code: 200,
+                message: '密码重置成功'
+            });
+        } catch (error) {
+            console.error('重置密码错误:', error);
+            res.send({
+                code: 201,
+                message: '重置密码失败',
+                error: error.message
+            });
+        }
+    },
+    // 更新角色状态
+    updateRoleStatus: async (req, res) => {
+        const { roleId } = req.params;
+        const { status } = req.body;
+
+        try {
+            const [result] = await db.promise().query(
+                'UPDATE roles SET status = ?, updated_at = NOW() WHERE role_id = ?',
+                [status, roleId]
+            );
+
+            if (result.affectedRows === 0) {
+                return res.send({
+                    code: 201,
+                    message: '角色不存在'
+                });
+            }
+
+            res.send({
+                code: 200,
+                message: '状态更新成功'
+            });
+        } catch (error) {
+            console.error('更新角色状态失败:', error);
+            res.send({
+                code: 201,
+                message: '更新角色状态失败',
+                error: error.message
+            });
+        }
+    },
+    // 获取所有角色
+    getAllRoles: async (req, res) => {
+        try {
+            const [roles] = await db.promise().query(
+                'SELECT role_id, role_name, role_code, description, status FROM roles ORDER BY role_id ASC'
+            );
+            
+            res.send({
+                code: 200,
+                message: '获取成功',
+                data: roles
+            });
+        } catch (error) {
+            console.error('获取所有角色失败:', error);
+            res.send({
+                code: 201,
+                message: '获取所有角色失败',
+                error: error.message
+            });
+        }
     }
 }
 module.exports = aclService;

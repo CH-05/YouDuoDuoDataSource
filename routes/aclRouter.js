@@ -1,21 +1,31 @@
 //用户相关请求
 const express = require('express');
 const aclService = require("../services/aclService");
-const aclRouter = express.Router();
-//获取用户列表
-aclRouter.get('/getUserList/page=:page/limit=:limit', aclService.getUserList)
-//单个删除用户
-aclRouter.delete('/removeUser',aclService.removeUser)
-//批量删除用户
-aclRouter.delete('/removeUsers',aclService.removeUsers)
-//添加新用户
-aclRouter.post('/addOrUpdateNewUser',aclService.addOrUpdateNewUser)
-//修改用户权限
-aclRouter.post("/setUserRole",aclService.setUserRole)
-//获取所有用户角色
-aclRouter.get('/getRoleList/page=:page/limit=:limit', aclService.getRoleList)
-//获取用户权限菜单
-aclRouter.get('/getPermissionMenu', aclService.getPermissionMenu)
-//添加用户权限
-aclRouter.post('/addUserPermission', aclService.addUserPermission)
-module.exports = aclRouter
+const router = express.Router();
+
+// 用户管理路由
+router.get('/user/list/:page/:limit', aclService.getUserList);
+router.post('/user/add', aclService.addOrUpdateNewUser);
+router.put('/user/:userId', aclService.addOrUpdateNewUser);
+router.delete('/user/:userId', aclService.removeUser);
+router.delete('/users', aclService.removeUsers);
+router.put('/user/:userId/status', aclService.updateUserStatus);
+router.post('/user/:userId/reset-password', aclService.resetPassword);
+
+// 角色管理路由
+router.get('/role/list/:page/:limit', aclService.getRoleList);
+router.get('/role/all', aclService.getAllRoles);
+router.post('/role/add', aclService.addRole);
+router.put('/role/:roleId', aclService.updateRole);
+router.delete('/role/:roleId', aclService.deleteRole);
+router.put('/role/:roleId/status', aclService.updateRoleStatus);
+
+// 用户角色关联路由
+router.get('/user/:userId/roles', aclService.getUserRoles);
+router.post('/user/role', aclService.setUserRole);
+
+// 权限管理路由
+router.get('/user/:userId/menu', aclService.getPermissionMenu);
+router.post('/user/permission', aclService.addUserPermission);
+
+module.exports = router;
