@@ -67,6 +67,29 @@ CREATE TABLE IF NOT EXISTS categories (
     FOREIGN KEY (parent_id) REFERENCES categories(category_id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='商品分类表';
 
+-- 创建品牌表
+CREATE TABLE IF NOT EXISTS trademarks (
+    product_id INT PRIMARY KEY AUTO_INCREMENT,
+    tmName VARCHAR(100) NOT NULL COMMENT '品牌名称',
+    logoUrl VARCHAR(255) DEFAULT NULL COMMENT '品牌Logo',
+    status TINYINT(1) DEFAULT 1 COMMENT '状态：0-禁用 1-启用',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='品牌表';
+
+-- 插入品牌测试数据
+INSERT INTO trademarks (tmName, logoUrl, status) VALUES 
+('金龙鱼', '/public/uploads/logo/jinlongyu.png', 1),
+('福临门', '/public/uploads/logo/fulinmen.png', 1),
+('鲁花', '/public/uploads/logo/luhua.png', 1),
+('海天', '/public/uploads/logo/haitian.png', 1),
+('李锦记', '/public/uploads/logo/lijinji.png', 1),
+('太太乐', '/public/uploads/logo/taitaile.png', 1),
+('老干妈', '/public/uploads/logo/laoganma.png', 1),
+('王致和', '/public/uploads/logo/wangzhihe.png', 1),
+('六必居', '/public/uploads/logo/liubiju.png', 1),
+('恒顺', '/public/uploads/logo/hengshun.png', 1);
+
 -- 创建商品表
 CREATE TABLE IF NOT EXISTS products (
     product_id INT PRIMARY KEY AUTO_INCREMENT,

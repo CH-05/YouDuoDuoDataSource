@@ -2,77 +2,77 @@ const db = require("../db");
 
 const trademarkService = {
     // 获取品牌列表（分页）
-    getAllProduct: (req, res) => {
-        const { page, limit } = req.params;
-        const { keyword } = req.query;
-        const offset = (page - 1) * limit;
-        
-        // 构建带有搜索条件的SQL语句
-        const searchCondition = keyword ? `WHERE tmName LIKE ?` : '';
-        const searchValue = keyword ? [`%${keyword}%`] : [];
-        
-        // 获取总条数和分页数据（使用Promise处理异步）
-        const getTrademarks = new Promise((resolve, reject) => {
-            // 修改总数SQL，添加搜索条件
-            const totalSql = `SELECT COUNT(*) as total FROM products ${searchCondition}`;
-            // 修改查询SQL，使用 DATE_FORMAT 格式化日期
-            const sql = `
+    getAllProduct: async (req, res) => {
+        try {
+            console.log('接收到获取品牌列表请求:', req.params, req.query);
+            const { page, limit } = req.params;
+            const { keyword } = req.query;
+            
+            if (!page || !limit) {
+                console.log('分页参数错误:', { page, limit });
+                return res.send({
+                    code: 201,
+                    message: '分页参数错误'
+                });
+            }
+
+            const offset = (page - 1) * limit;
+            
+            // 构建带有搜索条件的SQL语句
+            const searchCondition = keyword ? `WHERE tmName LIKE ?` : '';
+            const searchValue = keyword ? [`%${keyword}%`] : [];
+            
+            // 获取总条数
+            const countSql = `SELECT COUNT(*) as total FROM trademarks ${searchCondition}`;
+            console.log('执行查询总数SQL:', countSql, searchValue);
+            
+            const [totalResult] = await db.promise().query(countSql, searchValue);
+            console.log('总数查询结果:', totalResult);
+            
+            // 获取分页数据
+            const dataSql = `
                 SELECT 
                     product_id, 
                     tmName, 
                     logoUrl,
                     DATE_FORMAT(created_at, '%Y-%m-%d %H:%i:%s') as created_at,
                     DATE_FORMAT(updated_at, '%Y-%m-%d %H:%i:%s') as updated_at
-                FROM products 
+                FROM trademarks 
                 ${searchCondition} 
                 ORDER BY created_at DESC 
                 LIMIT ? OFFSET ?
             `;
+            console.log('执行查询数据SQL:', dataSql, [...searchValue, Number(limit), offset]);
             
-            // 先查询总数
-            db.query(totalSql, searchValue, (err, totalResult) => {
-                if (err) {
-                    reject(err);
-                    return;
+            const [records] = await db.promise().query(
+                dataSql,
+                [...searchValue, Number(limit), offset]
+            );
+            console.log('数据查询结果:', records);
+            
+            const response = {
+                code: 200,
+                message: '获取成功',
+                data: {
+                    records,
+                    total: totalResult[0].total,
+                    size: Number(limit),
+                    current: Number(page),
+                    searchCount: true,
+                    pages: Math.ceil(totalResult[0].total / limit)
                 }
-                
-                // 查询分页数据
-                db.query(sql, [...searchValue, Number(limit), offset], (err, records) => {
-                    if (err) {
-                        reject(err);
-                        return;
-                    }
-                    
-                    resolve({
-                        records,
-                        total: totalResult[0].total
-                    });
-                });
+            };
+            console.log('返回响应:', response);
+            
+            res.send(response);
+        } catch (error) {
+            console.error('查询品牌列表错误:', error);
+            res.send({
+                code: 201,
+                message: '获取品牌列表失败',
+                error: error.message
             });
-        });
-
-        getTrademarks
-            .then(data => {
-                res.send({
-                    code: 200,
-                    message: '获取成功',
-                    data: {
-                        records: data.records,
-                        total: data.total,
-                        size: Number(limit),
-                        current: Number(page),
-                        searchCount: true,
-                        pages: Math.ceil(data.total / limit)
-                    }
-                });
-            })
-            .catch(err => {
-                console.error('查询品牌列表错误:', err);
-                res.send({
-                    code: 201,
-                    message: '获取品牌列表失败'
-                });
-            });
+        }
     },
 
     // 上传品牌图片
@@ -114,7 +114,7 @@ const trademarkService = {
         }
         
         // 检查品牌名是否已存在
-        const checkNameSql = "SELECT product_id FROM products WHERE tmName = ? AND product_id != IFNULL(?, 0)";
+        const checkNameSql = "SELECT product_id FROM trademarks WHERE tmName = ? AND product_id != IFNULL(?, 0)";
         db.query(checkNameSql, [tmName, product_id], (err, result) => {
             if (err) {
                 console.error('查询品牌名称错误:', err);
@@ -134,7 +134,7 @@ const trademarkService = {
             // 执行添加或更新操作
             if (product_id) {
                 // 更新品牌
-                const updateSql = "UPDATE products SET tmName = ?, logoUrl = ? WHERE product_id = ?";
+                const updateSql = "UPDATE trademarks SET tmName = ?, logoUrl = ? WHERE product_id = ?";
                 db.query(updateSql, [tmName, logoUrl, product_id], (err, result) => {
                     if (err || result.affectedRows === 0) {
                         console.error('更新品牌错误:', err);
@@ -151,7 +151,7 @@ const trademarkService = {
                 });
             } else {
                 // 新增品牌
-                const insertSql = "INSERT INTO products(tmName, logoUrl) VALUES(?, ?)";
+                const insertSql = "INSERT INTO trademarks(tmName, logoUrl) VALUES(?, ?)";
                 db.query(insertSql, [tmName, logoUrl], (err, result) => {
                     if (err) {
                         console.error('添加品牌错误:', err);
@@ -181,7 +181,7 @@ const trademarkService = {
             });
         }
 
-        const sql = "DELETE FROM products WHERE product_id = ?";
+        const sql = "DELETE FROM trademarks WHERE product_id = ?";
         
         db.query(sql, [product_id], (err, result) => {
             if (err) {
