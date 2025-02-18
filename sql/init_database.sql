@@ -194,6 +194,33 @@ CREATE TABLE IF NOT EXISTS inventory_check_items (
     FOREIGN KEY (product_id) REFERENCES products(product_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='盘点单明细表';
 
+-- 创建菜单表
+CREATE TABLE IF NOT EXISTS `menus` (
+    `id` INT PRIMARY KEY AUTO_INCREMENT,
+    `parent_id` INT DEFAULT 0,
+    `name` VARCHAR(50) NOT NULL COMMENT '菜单名称',
+    `label` VARCHAR(50) NOT NULL COMMENT '菜单标识',
+    `level` INT NOT NULL DEFAULT 1 COMMENT '菜单级别',
+    `status` TINYINT NOT NULL DEFAULT 1 COMMENT '状态：0-禁用，1-启用',
+    `created_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    `updated_at` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY `uk_name` (`name`),
+    UNIQUE KEY `uk_label` (`label`),
+    KEY `idx_parent_id` (`parent_id`)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='菜单表';
+
+-- 插入初始菜单数据
+INSERT INTO `menus` (`parent_id`, `name`, `label`, `level`, `status`) VALUES
+(0, '权限管理', 'Acl', 1, 1),
+(1, '用户管理', 'User', 2, 1),
+(1, '角色管理', 'Role', 2, 1),
+(1, '菜单管理', 'Permission', 2, 1),
+(0, '商品管理', 'Product', 1, 1),
+(5, '品牌管理', 'Trademark', 2, 1),
+(5, '属性管理', 'Attr', 2, 1),
+(5, 'SPU管理', 'Spu', 2, 1),
+(5, 'SKU管理', 'Sku', 2, 1);
+
 -- 插入初始角色数据
 INSERT INTO roles (role_name, role_code, description) VALUES 
 ('超级管理员', 'SUPER_ADMIN', '系统超级管理员'),

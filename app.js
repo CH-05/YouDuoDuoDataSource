@@ -45,7 +45,7 @@ app.use('/product', attrRouter)
 app.use('/product/category', categoryRouter)
 app.use('/product/spu', spuRouter)
 app.use('/product/sku', skuRouter)
-app.use('/menu', menuRouter)
+app.use('/acl/menu', menuRouter)
 
 // 添加错误处理中间件
 app.use((err, req, res, next) => {
@@ -57,10 +57,9 @@ app.use((err, req, res, next) => {
   });
 });
 
-const PORT = 3000  // 修改为与前端代理配置匹配的端口
-
+const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`Server is running on port ${PORT}`)
-})
+    console.log(`Server is running on port ${PORT}`);
+});
 
 module.exports = app;

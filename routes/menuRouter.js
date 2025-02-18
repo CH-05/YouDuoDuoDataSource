@@ -1,23 +1,26 @@
 const express = require('express');
+const router = express.Router();
 const menuService = require('../services/menuService');
-const menuRouter = express.Router();
 
-// 获取菜单树
-menuRouter.get('/tree', menuService.getMenuTree);
+// 获取菜单列表
+router.get('/list', menuService.getMenuList);
 
 // 添加菜单
-menuRouter.post('/add', menuService.addMenu);
+router.post('/add', menuService.addMenu);
 
 // 更新菜单
-menuRouter.put('/update', menuService.updateMenu);
+router.put('/:menuId', menuService.updateMenu);
 
 // 删除菜单
-menuRouter.delete('/:menuId', menuService.deleteMenu);
+router.delete('/:menuId', menuService.deleteMenu);
+
+// 更新菜单状态
+router.put('/:menuId/status', menuService.updateMenuStatus);
 
 // 获取角色菜单
-menuRouter.get('/role/:roleId', menuService.getRoleMenus);
+router.get('/role/:roleId', menuService.getRoleMenus);
 
 // 更新角色菜单
-menuRouter.post('/role', menuService.updateRoleMenus);
+router.post('/role', menuService.updateRoleMenus);
 
-module.exports = menuRouter; 
+module.exports = router; 

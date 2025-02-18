@@ -1,6 +1,7 @@
 //用户相关请求
 const express = require('express');
 const aclService = require("../services/aclService");
+const menuService = require("../services/menuService");
 const router = express.Router();
 
 // 用户管理路由
@@ -27,5 +28,12 @@ router.post('/user/role', aclService.setUserRole);
 // 权限管理路由
 router.get('/user/:userId/menu', aclService.getPermissionMenu);
 router.post('/user/permission', aclService.addUserPermission);
+
+// 菜单管理路由
+router.get('/menu/list', menuService.getMenuList);
+router.post('/menu/add', menuService.addMenu);
+router.put('/menu/:menuId', menuService.updateMenu);
+router.delete('/menu/:menuId', menuService.deleteMenu);
+router.put('/menu/:menuId/status', menuService.updateMenuStatus);
 
 module.exports = router;
