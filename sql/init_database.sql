@@ -162,6 +162,25 @@ CREATE TABLE IF NOT EXISTS sales_orders (
     FOREIGN KEY (user_id) REFERENCES users(user_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='销售单表';
 
+-- 创建属性表
+CREATE TABLE IF NOT EXISTS attributes (
+    attr_id INT PRIMARY KEY AUTO_INCREMENT,
+    category_id INT NOT NULL,
+    attr_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(category_id)
+);
+
+-- 创建属性值表
+CREATE TABLE IF NOT EXISTS attr_values (
+    value_id INT PRIMARY KEY AUTO_INCREMENT,
+    attr_id INT NOT NULL,
+    value_name VARCHAR(100) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (attr_id) REFERENCES attributes(attr_id)
+);
+
 -- 创建销售单明细表
 CREATE TABLE IF NOT EXISTS sales_order_items (
     item_id INT PRIMARY KEY AUTO_INCREMENT,

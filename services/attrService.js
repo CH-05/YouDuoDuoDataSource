@@ -23,174 +23,379 @@ const attrService = {
     },
 
     // 获取属性列表
-    getAttrList: (req, res) => {
-        const { categoryId } = req.params;
-        
-        if (!categoryId) {
-            return res.send({
-                code: 201,
-                message: '参数错误'
-            });
-        }
-
-        const sql = `
-            SELECT 
-                a.attr_id as id,
-                a.attr_name as attrName,
-                a.category_id as categoryId,
-                GROUP_CONCAT(av.value_name) as attrValues
-            FROM attributes a
-            LEFT JOIN attr_values av ON a.attr_id = av.attr_id
-            WHERE a.category_id = ?
-            GROUP BY a.attr_id
-        `;
-        
-        db.query(sql, [categoryId], (err, result) => {
-            if (err) {
-                console.error('获取属性列表错误:', err);
+    getAttrList: async (req, res) => {
+        try {
+            const { category_id, page, limit } = req.params;
+            console.log('获取属性列表参数:', { category_id, page, limit });
+            
+            if (!category_id) {
                 return res.send({
                     code: 201,
-                    message: '获取属性列表失败'
+                    message: '分类ID不能为空'
                 });
             }
+
+            const offset = (parseInt(page) - 1) * parseInt(limit);
             
-            // 处理属性值数组
-            const records = result.map(item => ({
-                ...item,
-                attrValues: item.attrValues ? item.attrValues.split(',') : []
-            }));
+            // 获取总数
+            const [totalResult] = await db.promise().query(
+                'SELECT COUNT(*) as total FROM attributes WHERE category_id = ?',
+                [category_id]
+            );
+            
+            // 获取属性列表
+            const [attrs] = await db.promise().query(
+                `SELECT 
+                    a.attr_id,
+                    a.category_id,
+                    a.attr_name,
+                    GROUP_CONCAT(av.value_name) as attr_values,
+                    DATE_FORMAT(a.created_at, '%Y-%m-%d %H:%i:%s') as created_at,
+                    DATE_FORMAT(a.updated_at, '%Y-%m-%d %H:%i:%s') as updated_at
+                FROM attributes a
+                LEFT JOIN attr_values av ON a.attr_id = av.attr_id
+                WHERE a.category_id = ?
+                GROUP BY a.attr_id
+                ORDER BY a.created_at DESC
+                LIMIT ? OFFSET ?`,
+                [category_id, parseInt(limit), offset]
+            );
+            
+            console.log('查询结果:', { total: totalResult[0].total, records: attrs });
             
             res.send({
                 code: 200,
                 message: '获取成功',
-                data: records
+                data: {
+                    records: attrs.map(attr => ({
+                        ...attr,
+                        attr_values: attr.attr_values ? attr.attr_values.split(',') : []
+                    })),
+                    total: totalResult[0].total,
+                    size: parseInt(limit),
+                    current: parseInt(page)
+                }
             });
-        });
-    },
-
-    // 添加或更新属性
-    saveAttr: (req, res) => {
-        let { id, attrName, categoryId, attrValues } = req.body;
-        
-        // 参数验证
-        if (!attrName || !categoryId || !Array.isArray(attrValues) || attrValues.length === 0) {
-            return res.send({
+        } catch (error) {
+            console.error('获取属性列表失败:', error);
+            res.send({
                 code: 201,
-                message: '参数错误'
+                message: '获取属性列表失败',
+                error: error.message
             });
         }
+    },
 
-        // 开始事务
-        db.beginTransaction(async (err) => {
-            if (err) {
-                console.error('开始事务错误:', err);
+    // 添加属性
+    addAttr: async (req, res) => {
+        try {
+            const { category_id, attr_name, attr_values } = req.body;
+            console.log('添加属性参数:', req.body);
+            
+            if (!category_id || !attr_name || !Array.isArray(attr_values)) {
                 return res.send({
                     code: 201,
-                    message: '系统错误'
+                    message: '参数错误'
                 });
             }
 
+            // 检查属性名是否已存在
+            const [existing] = await db.promise().query(
+                'SELECT attr_id FROM attributes WHERE category_id = ? AND attr_name = ?',
+                [category_id, attr_name]
+            );
+
+            if (existing.length > 0) {
+                return res.send({
+                    code: 201,
+                    message: '该分类下已存在相同属性名'
+                });
+            }
+
+            const connection = await db.promise().getConnection();
+            
             try {
-                // 检查属性名是否重复
-                const checkNameSql = "SELECT attr_id FROM attributes WHERE attr_name = ? AND category_id = ? AND attr_id != IFNULL(?, 0)";
-                const [nameResult] = await db.promise().query(checkNameSql, [attrName, categoryId, id]);
-                
-                if (nameResult.length > 0) {
-                    throw new Error('该属性名称已存在');
+                await connection.beginTransaction();
+
+                // 插入属性
+                const [result] = await connection.query(
+                    'INSERT INTO attributes (category_id, attr_name) VALUES (?, ?)',
+                    [category_id, attr_name]
+                );
+
+                const attr_id = result.insertId;
+
+                // 如果有属性值，插入属性值
+                if (attr_values.length > 0) {
+                    const valueInserts = attr_values.map(value => [attr_id, value]);
+                    await connection.query(
+                        'INSERT INTO attr_values (attr_id, value_name) VALUES ?',
+                        [valueInserts]
+                    );
                 }
 
-                if (id) {
-                    // 更新属性
-                    await db.promise().query(
-                        "UPDATE attributes SET attr_name = ?, category_id = ? WHERE attr_id = ?",
-                        [attrName, categoryId, id]
-                    );
-                    
-                    // 删除旧的属性值
-                    await db.promise().query("DELETE FROM attr_values WHERE attr_id = ?", [id]);
-                } else {
-                    // 添加属性
-                    const [insertResult] = await db.promise().query(
-                        "INSERT INTO attributes(attr_name, category_id) VALUES(?, ?)",
-                        [attrName, categoryId]
-                    );
-                    console.log("insertResult",insertResult.insertId);
-                    id = insertResult.insertId;
-                }
+                await connection.commit();
+                connection.release();
 
-                // 添加新的属性值
-                const valuesSql = "INSERT INTO attr_values(attr_id, value_name) VALUES ?";
-                const values = attrValues.map(value => [id, value]);
-                await db.promise().query(valuesSql, [values]);
-
-                // 提交事务
-                await db.promise().commit();
-                
                 res.send({
                     code: 200,
-                    message: id ? '更新成功' : '添加成功'
+                    message: '添加成功',
+                    data: {
+                        attr_id,
+                        category_id,
+                        attr_name,
+                        attr_values
+                    }
                 });
             } catch (error) {
-                // 回滚事务
-                await db.promise().rollback();
-                console.error('保存属性错误:', error);
-                res.send({
+                await connection.rollback();
+                connection.release();
+                throw error;
+            }
+        } catch (error) {
+            console.error('添加属性失败:', error);
+            res.send({
+                code: 201,
+                message: '添加属性失败',
+                error: error.message
+            });
+        }
+    },
+
+    // 更新属性
+    updateAttr: async (req, res) => {
+        try {
+            const { attr_id } = req.params;
+            const { attr_name, attr_values } = req.body;
+            console.log('更新属性参数:', { attr_id, attr_name, attr_values });
+            
+            if (!attr_id || !attr_name || !Array.isArray(attr_values)) {
+                return res.send({
                     code: 201,
-                    message: error.message || '操作失败'
+                    message: '参数错误'
                 });
             }
-        });
+
+            // 检查属性是否存在
+            const [existing] = await db.promise().query(
+                'SELECT category_id FROM attributes WHERE attr_id = ?',
+                [attr_id]
+            );
+
+            if (existing.length === 0) {
+                return res.send({
+                    code: 201,
+                    message: '属性不存在'
+                });
+            }
+
+            // 检查属性名是否重复
+            const [nameConflict] = await db.promise().query(
+                'SELECT attr_id FROM attributes WHERE category_id = ? AND attr_name = ? AND attr_id != ?',
+                [existing[0].category_id, attr_name, attr_id]
+            );
+
+            if (nameConflict.length > 0) {
+                return res.send({
+                    code: 201,
+                    message: '该分类下已存在相同属性名'
+                });
+            }
+
+            const connection = await db.promise().getConnection();
+            
+            try {
+                await connection.beginTransaction();
+
+                // 更新属性名
+                await connection.query(
+                    'UPDATE attributes SET attr_name = ? WHERE attr_id = ?',
+                    [attr_name, attr_id]
+                );
+
+                // 删除旧的属性值
+                await connection.query(
+                    'DELETE FROM attr_values WHERE attr_id = ?',
+                    [attr_id]
+                );
+
+                // 插入新的属性值
+                if (attr_values.length > 0) {
+                    const valueInserts = attr_values.map(value => [attr_id, value]);
+                    await connection.query(
+                        'INSERT INTO attr_values (attr_id, value_name) VALUES ?',
+                        [valueInserts]
+                    );
+                }
+
+                await connection.commit();
+                connection.release();
+
+                res.send({
+                    code: 200,
+                    message: '更新成功',
+                    data: {
+                        attr_id,
+                        attr_name,
+                        attr_values
+                    }
+                });
+            } catch (error) {
+                await connection.rollback();
+                connection.release();
+                throw error;
+            }
+        } catch (error) {
+            console.error('更新属性失败:', error);
+            res.send({
+                code: 201,
+                message: '更新属性失败',
+                error: error.message
+            });
+        }
     },
 
     // 删除属性
-    deleteAttr: (req, res) => {
-        const { attrId } = req.params;
-        
-        if (!attrId) {
-            return res.send({
-                code: 201,
-                message: '参数错误'
-            });
-        }
+    deleteAttr: async (req, res) => {
+        try {
+            const { attr_id } = req.params;
+            console.log('删除属性参数:', { attr_id });
 
-        // 开始事务
-        db.beginTransaction(async (err) => {
-            if (err) {
-                console.error('开始事务错误:', err);
+            if (!attr_id) {
                 return res.send({
                     code: 201,
-                    message: '系统错误'
+                    message: '参数错误'
                 });
             }
 
+            const connection = await db.promise().getConnection();
+            
             try {
+                await connection.beginTransaction();
+
                 // 删除属性值
-                await db.promise().query("DELETE FROM attr_values WHERE attr_id = ?", [attrId]);
-                
+                await connection.query(
+                    'DELETE FROM attr_values WHERE attr_id = ?',
+                    [attr_id]
+                );
+
                 // 删除属性
-                const [result] = await db.promise().query("DELETE FROM attributes WHERE attr_id = ?", [attrId]);
-                
+                const [result] = await connection.query(
+                    'DELETE FROM attributes WHERE attr_id = ?',
+                    [attr_id]
+                );
+
                 if (result.affectedRows === 0) {
-                    throw new Error('属性不存在');
+                    await connection.rollback();
+                    connection.release();
+                    return res.send({
+                        code: 201,
+                        message: '属性不存在'
+                    });
                 }
 
-                // 提交事务
-                await db.promise().commit();
-                
+                await connection.commit();
+                connection.release();
+
                 res.send({
                     code: 200,
                     message: '删除成功'
                 });
             } catch (error) {
-                // 回滚事务
-                await db.promise().rollback();
-                console.error('删除属性错误:', error);
-                res.send({
+                await connection.rollback();
+                connection.release();
+                throw error;
+            }
+        } catch (error) {
+            console.error('删除属性失败:', error);
+            res.send({
+                code: 201,
+                message: '删除属性失败',
+                error: error.message
+            });
+        }
+    },
+
+    // 获取属性值列表
+    getAttrValues: async (req, res) => {
+        try {
+            const { attr_id } = req.params;
+
+            if (!attr_id) {
+                return res.send({
                     code: 201,
-                    message: error.message || '删除失败'
+                    message: '参数错误'
                 });
             }
-        });
+
+            const [values] = await db.promise().query(
+                'SELECT value_id, value_name FROM attr_values WHERE attr_id = ? ORDER BY value_id',
+                [attr_id]
+            );
+
+            res.send({
+                code: 200,
+                message: '获取成功',
+                data: values
+            });
+        } catch (error) {
+            console.error('获取属性值列表失败:', error);
+            res.send({
+                code: 201,
+                message: '获取属性值列表失败'
+            });
+        }
+    },
+
+    // 更新属性值
+    updateAttrValues: async (req, res) => {
+        try {
+            const { attr_id } = req.params;
+            const { values } = req.body;
+
+            if (!attr_id || !Array.isArray(values)) {
+                return res.send({
+                    code: 201,
+                    message: '参数错误'
+                });
+            }
+
+            // 开始事务
+            await db.promise().beginTransaction();
+
+            try {
+                // 删除旧的属性值
+                await db.promise().query(
+                    'DELETE FROM attr_values WHERE attr_id = ?',
+                    [attr_id]
+                );
+
+                // 插入新的属性值
+                if (values.length > 0) {
+                    const valueInserts = values.map(value => [attr_id, value]);
+                    await db.promise().query(
+                        'INSERT INTO attr_values (attr_id, value_name) VALUES ?',
+                        [valueInserts]
+                    );
+                }
+
+                await db.promise().commit();
+
+                res.send({
+                    code: 200,
+                    message: '更新成功'
+                });
+            } catch (error) {
+                await db.promise().rollback();
+                throw error;
+            }
+        } catch (error) {
+            console.error('更新属性值失败:', error);
+            res.send({
+                code: 201,
+                message: '更新属性值失败'
+            });
+        }
     }
 };
 
