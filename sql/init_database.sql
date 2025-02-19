@@ -286,4 +286,38 @@ INSERT INTO categories (category_name, parent_id, level, sort_order) VALUES
 ('大米', 1, 2, 1),
 ('面粉', 1, 2, 2),
 ('食用油', 2, 2, 1),
-('调味料', 3, 2, 1); 
+('调味料', 3, 2, 1);
+
+-- 创建SPU表
+CREATE TABLE IF NOT EXISTS spu (
+    spu_id INT PRIMARY KEY AUTO_INCREMENT,
+    spu_name VARCHAR(100) NOT NULL COMMENT 'SPU名称',
+    description TEXT COMMENT '描述',
+    category_id INT NOT NULL COMMENT '分类ID',
+    product_id INT NOT NULL COMMENT '品牌ID',
+    status TINYINT(1) DEFAULT 1 COMMENT '状态：0-下架 1-上架',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    FOREIGN KEY (category_id) REFERENCES categories(category_id),
+    FOREIGN KEY (product_id) REFERENCES trademarks(product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SPU表';
+
+-- 创建SPU图片表
+CREATE TABLE IF NOT EXISTS spu_image (
+    image_id INT PRIMARY KEY AUTO_INCREMENT,
+    spu_id INT NOT NULL COMMENT 'SPU ID',
+    image_url VARCHAR(255) NOT NULL COMMENT '图片URL',
+    image_name VARCHAR(100) COMMENT '图片名称',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (spu_id) REFERENCES spu(spu_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SPU图片表';
+
+-- 创建SPU销售属性表
+CREATE TABLE IF NOT EXISTS spu_sale_attr (
+    attr_id INT PRIMARY KEY AUTO_INCREMENT,
+    spu_id INT NOT NULL COMMENT 'SPU ID',
+    sale_attr_name VARCHAR(50) NOT NULL COMMENT '销售属性名称',
+    sale_attr_value VARCHAR(50) NOT NULL COMMENT '销售属性值',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (spu_id) REFERENCES spu(spu_id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='SPU销售属性表'; 
