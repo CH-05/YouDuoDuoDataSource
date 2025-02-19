@@ -1,0 +1,29 @@
+[33mcommit b7a7b066fc78bd6227b64ac6bfa1e916088c7c1b[m[33m ([m[1;36mHEAD[m[33m -> [m[1;32mmaster[m[33m)[m
+Author: ch-05 <702645864@qq.com>
+Date:   Thu Feb 20 01:10:24 2025 +0800
+
+    feat: 完成SPU管理相关接口，包括SPU的增删改查、图片上传和销售属性管理
+
+[33mcommit 1c737fb9ea16fad12c717047f1e1738481deb027[m[33m ([m[1;31morigin/master[m[33m)[m
+Author: ch-05 <702645864@qq.com>
+Date:   Wed Feb 19 23:06:30 2025 +0800
+
+    优化后端服务：改进属性管理和分类服务的事务处理和错误处理
+
+[33mcommit 88cc17564167fe22196d1276c9a41130b60004fe[m
+Author: ch-05 <702645864@qq.com>
+Date:   Wed Feb 19 02:14:51 2025 +0800
+
+    品牌管理功能点基本实现
+
+[33mcommit 0b255669cdba3fbb498c194aaf2da46fb10a106c[m
+Author: ch-05 <702645864@qq.com>
+Date:   Wed Feb 19 01:19:51 2025 +0800
+
+    fix: 修复路由权限和菜单显示问题 1. 修复路由组件路径，将PermissionView改为MenuView 2. 优化用户权限管理逻辑：超级管理员和管理员可访问所有路由，其他用户根据权限标签过滤路由 3. 修复动态路由添加逻辑 4. 优化菜单树形表格配置
+
+[33mcommit 34160a20d82669d6a4173f9da23cd2c821b580b3[m
+Author: ch-05 <702645864@qq.com>
+Date:   Wed Feb 19 00:46:28 2025 +0800
+
+    后端关于角色管理界面功能点基本实现
