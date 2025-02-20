@@ -2,19 +2,23 @@ const express = require('express');
 const router = express.Router();
 const skuService = require('../services/skuService');
 
-// 获取SKU列表
+// SKU列表
 router.get('/list', skuService.getSkuList);
 
-// 获取SKU详情
+// SKU详情
 router.get('/detail/:skuId', skuService.getSkuDetail);
 
-// 保存SKU（新增/更新）
+// 添加/更新SKU
 router.post('/save', skuService.saveSku);
 
 // 删除SKU
 router.delete('/delete/:skuId', skuService.deleteSku);
 
-// 获取SPU的销售属性
-router.get('/spuSaleAttr/:spuId', skuService.getSpuSaleAttr);
+// 获取SPU销售属性
+router.get('/saleAttr/:spuId', skuService.getSpuSaleAttr);
 
-module.exports = router; 
+// 上传SKU图片
+router.post('/image/upload', skuService.uploadSkuImage);
+
+module.exports = router;
+

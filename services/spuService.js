@@ -88,23 +88,57 @@ const spuService = {
             
             // 获取SPU图片
             const [spuImages] = await db.promise().query(
-                'SELECT * FROM spu_image WHERE spu_id = ?',
+                `SELECT 
+                    image_id,
+                    image_url,
+                    image_name
+                FROM spu_image 
+                WHERE spu_id = ?`,
                 [spuId]
             );
             
             // 获取销售属性
             const [saleAttrs] = await db.promise().query(
-                'SELECT * FROM spu_sale_attr WHERE spu_id = ?',
+                `SELECT 
+                    sa.attr_id,
+                    sa.attr_name
+                FROM spu_sale_attr sa
+                WHERE sa.spu_id = ?`,
                 [spuId]
             );
+
+            // 获取每个销售属性的属性值
+            const processedSaleAttrs = await Promise.all(saleAttrs.map(async (attr) => {
+                const [attrValues] = await db.promise().query(
+                    `SELECT 
+                        value_id,
+                        value_name
+                    FROM spu_sale_attr_value
+                    WHERE attr_id = ?`,
+                    [attr.attr_id]
+                );
+                
+                return {
+                    attr_id: attr.attr_id,
+                    attr_name: attr.attr_name,
+                    attr_values: attrValues
+                };
+            }));
+            
+            // 处理图片数据，确保字段名一致
+            const processedImages = spuImages.map(img => ({
+                image_id: img.image_id,
+                image_url: img.image_url,
+                image_name: img.image_name
+            }));
             
             res.send({
                 code: 200,
                 message: '获取成功',
                 data: {
                     ...spuInfo[0],
-                    spuImages,
-                    saleAttrs
+                    images: processedImages,
+                    sale_attrs: processedSaleAttrs
                 }
             });
         } catch (error) {
@@ -121,7 +155,7 @@ const spuService = {
     addSpu: async (req, res) => {
         try {
             const { spu_name, description, category_id, product_id, images, sale_attrs } = req.body;
-            console.log("req.body",req.body);
+            console.log("添加SPU请求数据:", req.body);
             
             if (!spu_name || !category_id || !product_id) {
                 return res.send({
@@ -144,30 +178,42 @@ const spuService = {
                 
                 // 插入SPU图片
                 if (images && images.length > 0) {
-                    console.log('准备插入SPU图片:', images);
                     const imageValues = images.map(img => [
                         spuId,
                         img.image_url,
                         img.image_name
                     ]);
-                    console.log('处理后的图片数据:', imageValues);
                     await connection.query(
                         'INSERT INTO spu_image (spu_id, image_url, image_name) VALUES ?',
                         [imageValues]
                     );
                 }
                 
-                // 插入销售属性
+                // 插入销售属性和属性值
                 if (sale_attrs && sale_attrs.length > 0) {
-                    const attrValues = sale_attrs.map(attr => [
-                        spuId,
-                        attr.sale_attr_name,
-                        attr.sale_attr_value
-                    ]);
-                    await connection.query(
-                        'INSERT INTO spu_sale_attr (spu_id, sale_attr_name, sale_attr_value) VALUES ?',
-                        [attrValues]
-                    );
+                    for (const attr of sale_attrs) {
+                        // 插入销售属性
+                        const [attrResult] = await connection.query(
+                            'INSERT INTO spu_sale_attr (spu_id, attr_name) VALUES (?, ?)',
+                            [spuId, attr.attr_name]
+                        );
+                        
+                        const attrId = attrResult.insertId;
+                        
+                        // 处理属性值（按逗号分隔）
+                        const attrValues = attr.attr_value.split(',').map(v => v.trim()).filter(v => v);
+                        
+                        if (attrValues.length > 0) {
+                            const valueValues = attrValues.map(value => [
+                                attrId,
+                                value
+                            ]);
+                            await connection.query(
+                                'INSERT INTO spu_sale_attr_value (attr_id, value_name) VALUES ?',
+                                [valueValues]
+                            );
+                        }
+                    }
                 }
                 
                 await connection.commit();
@@ -219,25 +265,61 @@ const spuService = {
                 // 更新SPU图片
                 await connection.query('DELETE FROM spu_image WHERE spu_id = ?', [spuId]);
                 if (images && images.length > 0) {
-                    const imageValues = images.map(img => [spuId, img.url, img.name]);
+                    const imageValues = images.map(img => [
+                        spuId,
+                        img.image_url,
+                        img.image_name
+                    ]);
                     await connection.query(
                         'INSERT INTO spu_image (spu_id, image_url, image_name) VALUES ?',
                         [imageValues]
                     );
                 }
                 
-                // 更新销售属性
-                await connection.query('DELETE FROM spu_sale_attr WHERE spu_id = ?', [spuId]);
-                if (sale_attrs && sale_attrs.length > 0) {
-                    const attrValues = sale_attrs.map(attr => [
-                        spuId,
-                        attr.sale_attr_name,
-                        attr.sale_attr_value
-                    ]);
+                // 更新销售属性和属性值
+                // 先删除旧的销售属性和属性值
+                const [currentAttrs] = await connection.query(
+                    'SELECT attr_id FROM spu_sale_attr WHERE spu_id = ?',
+                    [spuId]
+                );
+                
+                for (const attr of currentAttrs) {
                     await connection.query(
-                        'INSERT INTO spu_sale_attr (spu_id, sale_attr_name, sale_attr_value) VALUES ?',
-                        [attrValues]
+                        'DELETE FROM spu_sale_attr_value WHERE attr_id = ?',
+                        [attr.attr_id]
                     );
+                }
+                
+                await connection.query(
+                    'DELETE FROM spu_sale_attr WHERE spu_id = ?',
+                    [spuId]
+                );
+                
+                // 插入新的销售属性和属性值
+                if (sale_attrs && sale_attrs.length > 0) {
+                    for (const attr of sale_attrs) {
+                        // 插入销售属性
+                        const [attrResult] = await connection.query(
+                            'INSERT INTO spu_sale_attr (spu_id, attr_name) VALUES (?, ?)',
+                            [spuId, attr.attr_name]
+                        );
+                        
+                        const attrId = attrResult.insertId;
+                        
+                        // 处理属性值（按逗号分隔）
+                        const attrValues = attr.attr_value.split(',').map(v => v.trim()).filter(v => v);
+                        
+                        if (attrValues.length > 0) {
+                            const valueValues = attrValues.map(value => [
+                                attrId,
+                                value
+                            ]);
+                            await connection.query(
+                                'INSERT INTO spu_sale_attr_value (attr_id, value_name) VALUES ?',
+                                [valueValues]
+                            );
+                        }
+                    }
                 }
                 
                 await connection.commit();
@@ -328,15 +410,44 @@ const spuService = {
         try {
             const { spuId } = req.params;
             
-            const [attrs] = await db.promise().query(
-                'SELECT * FROM spu_sale_attr WHERE spu_id = ?',
+            // 获取销售属性和对应的属性值
+            const [saleAttrs] = await db.promise().query(
+                `SELECT 
+                    sa.attr_id,
+                    sa.attr_name,
+                    sav.value_id,
+                    sav.value_name
+                FROM spu_sale_attr sa
+                LEFT JOIN spu_sale_attr_value sav ON sa.attr_id = sav.attr_id
+                WHERE sa.spu_id = ?`,
                 [spuId]
             );
+
+            // 处理数据结构
+            const processedAttrs = saleAttrs.reduce((acc, curr) => {
+                const existingAttr = acc.find(item => item.attr_id === curr.attr_id);
+                if (existingAttr) {
+                    existingAttr.attr_values.push({
+                        value_id: curr.value_id,
+                        value_name: curr.value_name
+                    });
+                } else {
+                    acc.push({
+                        attr_id: curr.attr_id,
+                        attr_name: curr.attr_name,
+                        attr_values: curr.value_id ? [{
+                            value_id: curr.value_id,
+                            value_name: curr.value_name
+                        }] : []
+                    });
+                }
+                return acc;
+            }, []);
             
             res.send({
                 code: 200,
                 message: '获取成功',
-                data: attrs
+                data: processedAttrs
             });
         } catch (error) {
             console.error('获取销售属性列表失败:', error);

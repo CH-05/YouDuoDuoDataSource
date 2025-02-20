@@ -6,11 +6,15 @@ const {verifyToken} = require("../config/jwt");
 const db = require("../db");
 const moment = require("moment");
 
+const SALT_ROUNDS = 10; // 统一使用10轮加密
+
 const userService = {
     //用户登录
     login: async (req, res) => {
         try {
             const { username, password } = req.body;
+            
+            console.log('收到登录请求:', { username });
             
             if (!username || !password) {
                 return res.send({
@@ -24,6 +28,16 @@ const userService = {
                 [username]
             );
 
+            console.log('数据库查询结果:', {
+                found: users.length > 0,
+                userInfo: users.length > 0 ? {
+                    user_id: users[0].user_id,
+                    username: users[0].username,
+                    status: users[0].status,
+                    passwordHash: users[0].password
+                } : null
+            });
+
             if (users.length === 0) {
                 return res.send({
                     code: 201,
@@ -33,11 +47,22 @@ const userService = {
 
             const user = users[0];
             
-            const isPasswordValid = await bcrypt.compare(password, user.password);
-            if (!isPasswordValid) {
+            try {
+                console.log('开始验证密码');
+                const isPasswordValid = await bcrypt.compare(password, user.password);
+                console.log('密码验证结果:', isPasswordValid);
+                
+                if (!isPasswordValid) {
+                    return res.send({
+                        code: 201,
+                        message: '用户名或密码错误'
+                    });
+                }
+            } catch (error) {
+                console.error('密码验证出错:', error);
                 return res.send({
                     code: 201,
-                    message: '用户名或密码错误'
+                    message: '登录验证失败'
                 });
             }
 
@@ -52,6 +77,8 @@ const userService = {
                 'SELECT r.role_id, r.role_name FROM roles r JOIN user_role ur ON r.role_id = ur.role_id WHERE ur.user_id = ?',
                 [user.user_id]
             );
+
+            console.log('用户角色:', roles);
 
             const token = JWT.generateToken({
                 user_id: user.user_id,
@@ -83,6 +110,8 @@ const userService = {
         try {
             const { username, password } = req.body;
             
+            console.log('收到注册请求:', { username });
+            
             if (!username || !password) {
                 return res.send({
                     code: 201,
@@ -103,8 +132,12 @@ const userService = {
                 });
             }
 
-            // 密码加密
-            const hashedPassword = await bcrypt.hash(password, 12);
+            // 密码加密 - 使用统一的加密轮数
+            const hashedPassword = await bcrypt.hash(password, SALT_ROUNDS);
+            console.log('密码加密结果:', {
+                originalPassword: password,
+                hashedPassword: hashedPassword
+            });
 
             // 初始化默认路由
             const defaultRoutes = JSON.stringify([{
@@ -129,6 +162,11 @@ const userService = {
                     defaultRoutes
                 ]
             );
+
+            console.log('用户创建结果:', {
+                userId: result.insertId,
+                username: username
+            });
 
             // 分配默认角色（普通用户）
             await db.promise().query(
