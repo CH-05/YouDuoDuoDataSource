@@ -1,4 +1,5 @@
-const db = require("../db");
+const db = require("../db/index");
+
 
 const categoryService = {
     // 添加分类

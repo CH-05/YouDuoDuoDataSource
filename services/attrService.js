@@ -1,25 +1,26 @@
-const db = require("../db");
+const db = require("../db/index");
+
 
 const attrService = {
     // 获取分类列表
-    getCategory: (req, res) => {
-        const sql = "SELECT category_id as id, category_name as name FROM categories ORDER BY category_id";
-        
-        db.query(sql, (err, result) => {
-            if (err) {
-                console.error('获取分类列表错误:', err);
-                return res.send({
-                    code: 201,
-                    message: '获取分类列表失败'
-                });
-            }
+    getCategory: async (req, res) => {
+        try {
+            const sql = "SELECT category_id as id, category_name as name FROM categories ORDER BY category_id";
+            const [result] = await db.query(sql);
             
             res.send({
                 code: 200,
                 message: '获取成功',
                 data: result
             });
-        });
+        } catch (error) {
+            console.error('获取分类列表错误:', error);
+            res.send({
+                code: 201,
+                message: '获取分类列表失败',
+                error: error.message
+            });
+        }
     },
 
     // 获取属性列表
@@ -38,13 +39,13 @@ const attrService = {
             const offset = (parseInt(page) - 1) * parseInt(limit);
             
             // 获取总数
-            const [totalResult] = await db.promise().query(
+            const [totalResult] = await db.query(
                 'SELECT COUNT(*) as total FROM attributes WHERE category_id = ?',
                 [category_id]
             );
             
             // 获取属性列表
-            const [attrs] = await db.promise().query(
+            const [attrs] = await db.query(
                 `SELECT 
                     a.attr_id,
                     a.category_id,
@@ -100,7 +101,7 @@ const attrService = {
             }
 
             // 检查属性名是否已存在
-            const [existing] = await db.promise().query(
+            const [existing] = await db.query(
                 'SELECT attr_id FROM attributes WHERE category_id = ? AND attr_name = ?',
                 [category_id, attr_name]
             );
@@ -112,7 +113,7 @@ const attrService = {
                 });
             }
 
-            const connection = await db.promise().getConnection();
+            const connection = await db.getConnection();
             
             try {
                 await connection.beginTransaction();
@@ -177,7 +178,7 @@ const attrService = {
             }
 
             // 检查属性是否存在
-            const [existing] = await db.promise().query(
+            const [existing] = await db.query(
                 'SELECT category_id FROM attributes WHERE attr_id = ?',
                 [attr_id]
             );
@@ -190,7 +191,7 @@ const attrService = {
             }
 
             // 检查属性名是否重复
-            const [nameConflict] = await db.promise().query(
+            const [nameConflict] = await db.query(
                 'SELECT attr_id FROM attributes WHERE category_id = ? AND attr_name = ? AND attr_id != ?',
                 [existing[0].category_id, attr_name, attr_id]
             );
@@ -202,7 +203,7 @@ const attrService = {
                 });
             }
 
-            const connection = await db.promise().getConnection();
+            const connection = await db.getConnection();
             
             try {
                 await connection.beginTransaction();
@@ -268,7 +269,7 @@ const attrService = {
                 });
             }
 
-            const connection = await db.promise().getConnection();
+            const connection = await db.getConnection();
             
             try {
                 await connection.beginTransaction();
@@ -328,7 +329,7 @@ const attrService = {
                 });
             }
 
-            const [values] = await db.promise().query(
+            const [values] = await db.query(
                 'SELECT value_id, value_name FROM attr_values WHERE attr_id = ? ORDER BY value_id',
                 [attr_id]
             );
@@ -361,11 +362,11 @@ const attrService = {
             }
 
             // 开始事务
-            await db.promise().beginTransaction();
+            await db.beginTransaction();
 
             try {
                 // 删除旧的属性值
-                await db.promise().query(
+                await db.query(
                     'DELETE FROM attr_values WHERE attr_id = ?',
                     [attr_id]
                 );
@@ -373,20 +374,20 @@ const attrService = {
                 // 插入新的属性值
                 if (values.length > 0) {
                     const valueInserts = values.map(value => [attr_id, value]);
-                    await db.promise().query(
+                    await db.query(
                         'INSERT INTO attr_values (attr_id, value_name) VALUES ?',
                         [valueInserts]
                     );
                 }
 
-                await db.promise().commit();
+                await db.commit();
 
                 res.send({
                     code: 200,
                     message: '更新成功'
                 });
             } catch (error) {
-                await db.promise().rollback();
+                await db.rollback();
                 throw error;
             }
         } catch (error) {

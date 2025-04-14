@@ -1,41 +1,8 @@
-const db = require("../db");
-const multer = require('multer');
-const path = require('path');
+const db = require("../db/index");
+const { v4: uuidv4 } = require('uuid');
 const fs = require('fs');
+const path = require('path');
 
-// 配置文件上传
-const storage = multer.diskStorage({
-    destination: function (req, file, cb) {
-        const uploadDir = 'public/uploads/sku';
-        // 确保上传目录存在
-        if (!fs.existsSync(uploadDir)) {
-            fs.mkdirSync(uploadDir, { recursive: true });
-        }
-        cb(null, uploadDir);
-    },
-    filename: function (req, file, cb) {
-        const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-        cb(null, uniqueSuffix + path.extname(file.originalname));
-    }
-});
-
-const upload = multer({
-    storage: storage,
-    fileFilter: function (req, file, cb) {
-        const allowedTypes = /jpeg|jpg|png|gif/;
-        const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
-        const mimetype = allowedTypes.test(file.mimetype);
-
-        if (extname && mimetype) {
-            return cb(null, true);
-        } else {
-            cb(new Error('只允许上传图片文件!'));
-        }
-    },
-    limits: {
-        fileSize: 2 * 1024 * 1024 // 限制2MB
-    }
-}).single('file');
 
 const skuService = {
     // 获取SKU列表
@@ -59,14 +26,16 @@ const skuService = {
 
             const offset = (page - 1) * limit;
 
+
             // 获取总数
-            const [totalResult] = await db.promise().query(
+            const [totalResult] = await db.query(
                 'SELECT COUNT(*) as total FROM sku WHERE spu_id = ?',
                 [spu_id]
             );
 
+            
             // 获取SKU列表
-            const [skus] = await db.promise().query(
+            const [skus] = await db.query(
                 `SELECT 
                     s.*,
                     t.tmName as trademark_name,
@@ -113,7 +82,7 @@ const skuService = {
             const { skuId } = req.params;
 
             // 获取SKU基本信息
-            const [skuInfo] = await db.promise().query(
+            const [skuInfo] = await db.query(
                 `SELECT 
                     s.*,
                     t.tmName as trademark_name
@@ -131,13 +100,13 @@ const skuService = {
             }
 
             // 获取SKU图片
-            const [images] = await db.promise().query(
+            const [images] = await db.query(
                 'SELECT * FROM sku_image WHERE sku_id = ?',
                 [skuId]
             );
 
             // 获取SKU销售属性值
-            const [attrValues] = await db.promise().query(
+            const [attrValues] = await db.query(
                 `SELECT 
                     sa.attr_id as spu_sale_attr_id,
                     sa.attr_name,
@@ -171,7 +140,7 @@ const skuService = {
 
     // 保存SKU
     saveSku: async (req, res) => {
-        const connection = await db.promise().getConnection();
+        const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
 
@@ -280,7 +249,7 @@ const skuService = {
 
     // 删除SKU
     deleteSku: async (req, res) => {
-        const connection = await db.promise().getConnection();
+        const connection = await db.getConnection();
         try {
             await connection.beginTransaction();
 
@@ -315,7 +284,7 @@ const skuService = {
         try {
             const { spuId } = req.params;
 
-            const [attrs] = await db.promise().query(
+            const [attrs] = await db.query(
                 `SELECT 
                     sa.attr_id,
                     sa.attr_name,
@@ -357,37 +326,68 @@ const skuService = {
 
     // 上传SKU图片
     uploadSkuImage: (req, res) => {
-        upload(req, res, function (err) {
-            if (err instanceof multer.MulterError) {
-                console.error('文件上传错误(Multer):', err);
-                return res.send({
-                    code: 201,
-                    message: err.code === 'LIMIT_FILE_SIZE' 
-                        ? '文件大小不能超过2MB' 
-                        : '文件上传失败'
-                });
-            } else if (err) {
-                console.error('文件上传错误:', err);
-                return res.send({
-                    code: 201,
-                    message: err.message || '文件上传失败'
-                });
-            }
-
+        try {
             if (!req.file) {
                 return res.send({
                     code: 201,
                     message: '请选择要上传的图片'
                 });
             }
-
-            const imageUrl = `/uploads/sku/${req.file.filename}`;
+            
+            // 使用正确的路径格式
+            const imageUrl = `/public/uploads/sku/${req.file.filename}`;
             res.send({
                 code: 200,
                 message: '上传成功',
                 data: imageUrl
             });
-        });
+        } catch (error) {
+            console.error('图片上传错误:', error);
+            res.send({
+                code: 201,
+                message: error.message || '文件上传失败'
+            });
+        }
+    },
+
+    // 获取品牌下的SKU商品列表
+    getSkuListByTrademark: async (req, res) => {
+        try {
+            const { trademark_id } = req.params;
+            
+            const sql = `
+                SELECT 
+                    s.sku_id as id,
+                    CONCAT(t.tmName, ' - ', s.sku_name) as skuName,
+                    s.price,
+                    s.stock,
+                    s.weight as unit
+                FROM sku s
+                INNER JOIN trademarks t ON s.product_id = t.product_id
+                WHERE t.product_id = ?
+                ORDER BY s.created_at DESC
+            `;
+            
+            console.log('SQL查询:', sql);
+            console.log('参数:', trademark_id);
+            
+            const [rows] = await db.query(sql, [trademark_id]);
+            
+            console.log('查询结果:', rows);
+            
+            res.send({
+                code: 200,
+                message: '获取成功',
+                data: rows || []
+            });
+        } catch (error) {
+            console.error('获取品牌SKU列表失败：', error);
+            res.send({
+                code: 201,
+                message: '获取品牌SKU列表失败',
+                error: error.message
+            });
+        }
     }
 };
 

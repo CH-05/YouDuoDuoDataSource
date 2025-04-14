@@ -1,7 +1,7 @@
 const express = require('express');
 const router = express.Router();
 const spuService = require('../services/spuService');
-const fileUpload = require('../config/storage');
+const { spuUpload } = require('../config/storage');
 
 // 获取SPU列表
 router.get('/list/:page/:limit', spuService.getSpuList);
@@ -18,8 +18,8 @@ router.put('/:spuId', spuService.updateSpu);
 // 删除SPU
 router.delete('/:spuId', spuService.deleteSpu);
 
-// 上传SPU图片
-router.post('/image/upload', fileUpload.single('file'), spuService.uploadSpuImage);
+// 上传SPU图片 - 使用专门的SPU图片上传配置
+router.post('/image/upload', spuUpload.single('file'), spuService.uploadSpuImage);
 
 // 获取销售属性列表
 router.get('/saleAttr/:spuId', spuService.getSaleAttrList);

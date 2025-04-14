@@ -1,4 +1,5 @@
-const db = require("../db");
+const db = require("../db/index");
+
 const moment = require("moment");
 
 const menuService = {
@@ -22,7 +23,7 @@ const menuService = {
             `;
             
             console.log('执行SQL查询:', sql);
-            const [menus] = await db.promise().query(sql);
+            const [menus] = await db.query(sql);
             console.log('查询结果:', menus);
             
             // 构建菜单树
@@ -76,7 +77,7 @@ const menuService = {
             }
 
             // 检查菜单名称和标识是否已存在
-            const [existingMenus] = await db.promise().query(
+            const [existingMenus] = await db.query(
                 'SELECT id FROM menus WHERE name = ? OR label = ?',
                 [name, label]
             );
@@ -89,7 +90,7 @@ const menuService = {
             }
 
             // 插入新菜单
-            const [result] = await db.promise().query(
+            const [result] = await db.query(
                 `INSERT INTO menus (
                     name, 
                     label, 
@@ -126,7 +127,7 @@ const menuService = {
         
         try {
             // 检查菜单是否存在
-            const [existingMenu] = await db.promise().query(
+            const [existingMenu] = await db.query(
                 'SELECT id FROM menus WHERE id = ?',
                 [menuId]
             );
@@ -139,7 +140,7 @@ const menuService = {
             }
             
             // 检查新的菜单名称或标识是否与其他菜单冲突
-            const [conflictingMenus] = await db.promise().query(
+            const [conflictingMenus] = await db.query(
                 'SELECT id FROM menus WHERE (name = ? OR label = ?) AND id != ?',
                 [name, label, menuId]
             );
@@ -152,7 +153,7 @@ const menuService = {
             }
             
             // 更新菜单
-            await db.promise().query(
+            await db.query(
                 `UPDATE menus SET 
                     name = ?, 
                     label = ?, 
@@ -183,7 +184,7 @@ const menuService = {
         
         try {
             // 检查菜单是否存在
-            const [existingMenu] = await db.promise().query(
+            const [existingMenu] = await db.query(
                 'SELECT id FROM menus WHERE id = ?',
                 [menuId]
             );
@@ -196,7 +197,7 @@ const menuService = {
             }
             
             // 检查是否有子菜单
-            const [childMenus] = await db.promise().query(
+            const [childMenus] = await db.query(
                 'SELECT id FROM menus WHERE parent_id = ?',
                 [menuId]
             );
@@ -209,7 +210,7 @@ const menuService = {
             }
             
             // 删除菜单
-            await db.promise().query('DELETE FROM menus WHERE id = ?', [menuId]);
+            await db.query('DELETE FROM menus WHERE id = ?', [menuId]);
             
             res.send({
                 code: 200,
@@ -231,7 +232,7 @@ const menuService = {
         
         try {
             // 检查菜单是否存在
-            const [existingMenu] = await db.promise().query(
+            const [existingMenu] = await db.query(
                 'SELECT id FROM menus WHERE id = ?',
                 [menuId]
             );
@@ -244,7 +245,7 @@ const menuService = {
             }
             
             // 更新状态
-            await db.promise().query(
+            await db.query(
                 'UPDATE menus SET status = ?, updated_at = NOW() WHERE id = ?',
                 [status, menuId]
             );
@@ -274,7 +275,7 @@ const menuService = {
         }
 
         try {
-            const [menus] = await db.promise().query(
+            const [menus] = await db.query(
                 `SELECT menu_id FROM role_menu WHERE role_id = ?`,
                 [roleId]
             );
@@ -304,10 +305,10 @@ const menuService = {
         }
 
         try {
-            await db.promise().beginTransaction();
+            await db.beginTransaction();
 
             // 删除旧的关联
-            await db.promise().query(
+            await db.query(
                 'DELETE FROM role_menu WHERE role_id = ?',
                 [roleId]
             );
@@ -315,20 +316,20 @@ const menuService = {
             // 添加新的关联
             if (menuIds.length > 0) {
                 const values = menuIds.map(menuId => [roleId, menuId]);
-                await db.promise().query(
+                await db.query(
                     'INSERT INTO role_menu (role_id, menu_id) VALUES ?',
                     [values]
                 );
             }
 
-            await db.promise().commit();
+            await db.commit();
 
             res.send({
                 code: 200,
                 message: '更新成功'
             });
         } catch (error) {
-            await db.promise().rollback();
+            await db.rollback();
             console.error('更新角色菜单错误:', error);
             res.send({
                 code: 201,

@@ -8,6 +8,8 @@ const categoryRouter = require('./routes/categoryRouter');
 const spuRouter = require('./routes/spuRouter');
 const skuRouter = require('./routes/skuRouter');
 const menuRouter = require('./routes/menuRouter');
+const grainOilRouter = require('./routes/grainOilRouter');
+const dashboardRouter = require('./routes/dashboardRouter');
 const {verifyToken} = require("./config/jwt");
 const path = require('path');
 const attrRouter = require('./routes/attrRouter');
@@ -46,6 +48,8 @@ app.use('/product/category', categoryRouter)
 app.use('/product/spu', spuRouter)
 app.use('/product/sku', skuRouter)
 app.use('/acl/menu', menuRouter)
+app.use('/grainOil', grainOilRouter)
+app.use('/api/dashboard', dashboardRouter)
 
 // 添加错误处理中间件
 app.use((err, req, res, next) => {
