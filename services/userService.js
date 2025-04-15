@@ -293,7 +293,10 @@ const userService = {
             let parsedRoles = [];
             try {
                 if (user.roles) {
-                    parsedRoles = user.roles.split(',').map(role => JSON.parse(role));
+                    // 1. 将 GROUP_CONCAT 的结果包装成 JSON 数组字符串
+                    const rolesJsonString = `[${user.roles}]`; 
+                    // 2. 解析整个 JSON 数组字符串
+                    parsedRoles = JSON.parse(rolesJsonString); 
                 }
             } catch (error) {
                 console.error('解析roles失败:', error);
